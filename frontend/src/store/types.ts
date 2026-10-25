@@ -62,8 +62,10 @@ export interface ProjectSummary extends Project {
 export interface ProjectImportData {
   name: string;
   description: string;
+  /** Set when the project comes from the user's account (Phase 5b download). */
+  cloudProjectId?: string;
   /** Parents before children. */
   folders: string[][];
-  documents: Array<{ folder: string[]; title: string; content: string }>;
+  documents: Array<{ folder: string[]; title: string; content: string; cloudDocumentId?: string; headVersionId?: string; dirty?: boolean }>;
   images: Array<{ folder: string[]; name: string; contentType: ImageType; bytes: ArrayBuffer }>;
 }
