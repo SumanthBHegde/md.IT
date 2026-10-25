@@ -8,7 +8,17 @@ from tests.support import alembic_config
 
 pytestmark = pytest.mark.integration
 
-APP_TABLES = {"blobs", "documents", "projects", "users", "versions"}
+APP_TABLES = {
+    "blobs",
+    "documents",
+    "projects",
+    "sessions",
+    "user_blobs",
+    "users",
+    "version_images",
+    "versions",
+}
+NEW_IN_0002 = {"sessions", "user_blobs", "version_images"}
 
 
 def table_names(engine: Engine) -> set[str]:
@@ -16,12 +26,14 @@ def table_names(engine: Engine) -> set[str]:
 
 
 def test_downgrade_then_upgrade_again(migrated: Engine) -> None:
-    with migrated.begin() as connection:
-        command.downgrade(alembic_config(connection), "base")
-    assert table_names(migrated) == {"alembic_version"}
-
-    with migrated.begin() as connection:
-        command.upgrade(alembic_config(connection), "head")
+    try:
+        with migrated.begin() as connection:
+            command.downgrade(alembic_config(connection), "base")
+        assert table_names(migrated) == {"alembic_version"}
+    finally:
+        # Later tests need the schema even when the assertion above fails.
+        with migrated.begin() as connection:
+            command.upgrade(alembic_config(connection), "head")
     assert table_names(migrated) == APP_TABLES | {"alembic_version"}
 
 
@@ -39,3 +51,40 @@ def test_tables_are_innodb_and_utf8mb4(migrated: Engine) -> None:
         rows = {name: (engine, collation) for name, engine, collation in connection.execute(query)}
     for table in APP_TABLES:
         assert rows[table] == ("InnoDB", "utf8mb4_0900_ai_ci")
+
+
+def test_downgrade_to_0001_and_back(migrated: Engine) -> None:
+    try:
+        with migrated.begin() as connection:
+            command.downgrade(alembic_config(connection), "0001")
+        assert table_names(migrated) == (APP_TABLES - NEW_IN_0002) | {"alembic_version"}
+        columns = {column["name"] for column in inspect(migrated).get_columns("documents")}
+        assert "next_number" not in columns
+    finally:
+        with migrated.begin() as connection:
+            command.upgrade(alembic_config(connection), "head")
+    assert table_names(migrated) == APP_TABLES | {"alembic_version"}
+
+
+def test_downgrade_with_dev_users_present(migrated: Engine) -> None:
+    # 0001's CHECK can't hold `dev` users; the downgrade must not fail halfway (MySQL DDL
+    # isn't transactional, so a failure leaves tables dropped and the revision unchanged).
+    with migrated.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (public_id, provider, provider_user_id) "
+                "VALUES (UUID(), 'dev', 'x')"
+            )
+        )
+    try:
+        with migrated.begin() as connection:
+            command.downgrade(alembic_config(connection), "0001")
+        with migrated.connect() as connection:
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                == "0001"
+            )
+    finally:
+        with migrated.begin() as connection:
+            command.upgrade(alembic_config(connection), "head")
+            connection.execute(text("DELETE FROM users"))

@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from app.errors import install_error_handlers
+from app.errors import ApiError, install_error_handlers
 
 
 class Item(BaseModel):
@@ -31,6 +31,14 @@ def make_client() -> TestClient:
     @app.get("/limited")
     def limited() -> None:
         raise HTTPException(429, "Slow down.", headers={"Retry-After": "5"})
+
+    @app.get("/conflict")
+    def conflict() -> None:
+        raise ApiError(409, "version_conflict", "Newer version.", {"latest": None}, {"X-A": "1"})
+
+    @app.get("/odd")
+    def odd() -> None:
+        raise HTTPException(599)
 
     @app.get("/boom")
     def boom() -> None:
@@ -97,3 +105,22 @@ def test_unhandled_errors_hide_details() -> None:
         "error": {"code": "internal_error", "message": "Something went wrong."}
     }
     assert "hunter2" not in response.text
+
+
+def test_api_error_uses_the_error_shape() -> None:
+    response = make_client().get("/conflict")
+    assert response.status_code == 409
+    assert response.headers["x-a"] == "1"
+    assert response.json() == {
+        "error": {
+            "code": "version_conflict",
+            "message": "Newer version.",
+            "details": {"latest": None},
+        }
+    }
+
+
+def test_non_standard_status_code_does_not_raise() -> None:
+    response = make_client().get("/odd")
+    assert response.status_code == 599
+    assert response.json() == {"error": {"code": "http_599", "message": "Error."}}

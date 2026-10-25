@@ -12,6 +12,11 @@ log = logging.getLogger(__name__)
 _HASH = re.compile(r"[0-9a-f]{64}")
 
 
+def is_blob_hash(value: str) -> bool:
+    """A blob name: SHA-256 as 64 lowercase hex characters."""
+    return _HASH.fullmatch(value) is not None
+
+
 class BlobStore:
     def __init__(self, container: ContainerClient) -> None:
         self._container = container
@@ -57,7 +62,12 @@ class BlobStore:
         except ResourceNotFoundError:
             return None
 
+    def delete(self, hash: str) -> None:
+        """Remove a blob; one that is already gone is fine."""
+        with contextlib.suppress(ResourceNotFoundError):
+            self._blob(hash).delete_blob()
+
     def _blob(self, hash: str) -> BlobClient:
-        if not _HASH.fullmatch(hash):
+        if not is_blob_hash(hash):
             raise ValueError("Blob names must be 64 lowercase hex characters.")
         return self._container.get_blob_client(hash)

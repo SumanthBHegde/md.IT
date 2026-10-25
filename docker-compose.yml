@@ -46,6 +46,16 @@ services:
       BLOB_CONNECTION_STRING: ${BLOB_CONNECTION_STRING:-DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;}
       BLOB_CONTAINER: ${BLOB_CONTAINER:-mdit-blobs}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      # Sign-in (Phase 5a). The dev login and session secret are for local development only.
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      SESSION_SECRET: ${SESSION_SECRET:-mdit-dev-session-secret-change-me-0000}
+      SESSION_DAYS: ${SESSION_DAYS:-30}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      DEV_LOGIN: ${DEV_LOGIN:-1}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     depends_on:
       mysql:
         condition: service_healthy
