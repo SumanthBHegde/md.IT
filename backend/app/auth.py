@@ -45,3 +45,18 @@ def clear_session_cookie(response: Response, settings: Settings) -> None:
         httponly=True,
         samesite="lax",
     )
+
+
+MAX_NEXT = 2048
+
+
+def safe_next(value: str | None) -> str:
+    """Where to go after sign-in: a path on this site, never another origin."""
+    if (
+        not value
+        or not value.startswith("/")
+        or value.startswith(("//", "/\\"))
+        or len(value) > MAX_NEXT
+    ):
+        return "/"
+    return value

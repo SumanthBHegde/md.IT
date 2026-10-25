@@ -1,6 +1,7 @@
 """Fixtures for integration tests against MySQL and Azurite (P-047)."""
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import pytest
 from alembic import command
@@ -16,6 +17,7 @@ from app.main import create_app
 from app.storage.blobs import BlobStore
 from tests.support import (
     TEST_BASE_URL,
+    FakeProvider,
     alembic_config,
     make_test_settings,
     mysql_unavailable_reason,
@@ -92,9 +94,28 @@ def api_settings(test_settings: Settings) -> Settings:
     return test_settings.model_copy(update={"dev_login": True})
 
 
+AppFactory = Callable[..., FastAPI]
+
+
 @pytest.fixture
-def app(clean_db: Engine, blob_store: BlobStore, api_settings: Settings) -> FastAPI:
-    return create_app(api_settings)
+def make_app(clean_db: Engine, blob_store: BlobStore, api_settings: Settings) -> AppFactory:
+    """Build an app with other settings or providers: make_app(providers={...}, dev_login=False)."""
+
+    def make(providers: dict[str, Any] | None = None, **overrides: Any) -> FastAPI:
+        settings = api_settings.model_copy(update=overrides)
+        return create_app(settings, providers=providers if providers is not None else {})
+
+    return make
+
+
+@pytest.fixture
+def fake_provider() -> FakeProvider:
+    return FakeProvider()
+
+
+@pytest.fixture
+def app(make_app: AppFactory, fake_provider: FakeProvider) -> FastAPI:
+    return make_app(providers={"github": fake_provider})
 
 
 def api_client(app: FastAPI, *, csrf: bool = True) -> TestClient:

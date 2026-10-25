@@ -1,11 +1,13 @@
 """md.IT API. Uvicorn builds it with `--factory app.main:create_app`, so importing this
 module never reads the environment."""
 
+import logging
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import Settings
 from app.csrf import CsrfMiddleware
@@ -17,6 +19,12 @@ from app.routes import auth, health, me
 from app.services.oauth import IdentityProvider, build_providers
 from app.storage.blobs import BlobStore
 
+log = logging.getLogger(__name__)
+
+# The OAuth state cookie: state, PKCE verifier and `next` for one sign-in in progress.
+OAUTH_COOKIE = "mdit_oauth"
+OAUTH_COOKIE_SECONDS = 600
+
 
 def create_app(
     settings: Settings | None = None,
@@ -25,6 +33,11 @@ def create_app(
 ) -> FastAPI:
     settings = settings or Settings()  # type: ignore[call-arg]  # values come from env vars
     configure_logging(settings.log_level)
+    if settings.dev_login:
+        log.warning(
+            "DEV_LOGIN is on: anyone can sign in as any dev user. "
+            "Never enable it outside local development."
+        )
     engine = create_db_engine(settings)
     probe_engine = readiness_engine(settings)
     blobs = BlobStore.from_connection_string(
@@ -53,6 +66,15 @@ def create_app(
     app.state.blobs = blobs
     app.state.readiness = readiness or build_readiness(probe_engine, blobs)
     install_error_handlers(app)
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret.get_secret_value(),
+        session_cookie=OAUTH_COOKIE,
+        max_age=OAUTH_COOKIE_SECONDS,
+        path="/api/auth",
+        same_site="lax",
+        https_only=settings.cookie_secure,
+    )
     app.add_middleware(CsrfMiddleware)
     app.include_router(health.router)
     app.include_router(auth.router)
