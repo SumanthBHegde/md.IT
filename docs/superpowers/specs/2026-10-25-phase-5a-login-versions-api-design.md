@@ -1,6 +1,6 @@
 # Phase 5a — Login and versions API: design
 
-Status: approved in sections 2026-10-25 · Branch: `phase-5-login-versions` · PRD: §6, §8, §9.2–9.3, §10.4, §12, §13
+Status: approved 2026-10-25, amended after planning probes (P-068) · Branch: `phase-5-login-versions` · PRD: §6, §8, §9.2–9.3, §10.4, §12, §13
 
 ## 1. Goal
 
@@ -41,7 +41,7 @@ backend/
   app/
     main.py                 + routers, SessionMiddleware for the OAuth state cookie, access-log filter
     config.py               + auth settings (§10)
-    csrf.py                 dependency: mutating requests need X-MdIt-CSRF: 1
+    csrf.py                 ASGI middleware: mutating /api requests need X-MdIt-CSRF: 1
     auth.py                 current_user dependency (401), session cookie helpers
     db/models.py            + Session, UserBlob, VersionImage; Document.next_number; provider CHECK
     db/session.py           hide_parameters=True
@@ -58,7 +58,7 @@ backend/
       auth.py  me.py  projects.py  documents.py  versions.py  blobs.py  health.py
   alembic/versions/0002_sessions_ownership_version_images.py
   tests/                    + one test module per route/service, guard tests, migration 0002
-scripts/api-smoke.sh        two-cookie-jar end-to-end check (§12)
+scripts/api_smoke.py        two-cookie-jar end-to-end check, Python stdlib only (§12)
 docker-compose.yml          backend gets auth env vars, DEV_LOGIN=1
 .env.example                + SESSION_SECRET (dev only), optional OAuth client vars
 gateway/default.conf        resolver + variable proxy_pass
@@ -119,7 +119,8 @@ class IdentityProvider(Protocol):
 ```
 
 - **GitHub** (Authlib OAuth 2 client): scopes `read:user user:email`; `provider_user_id` is `/user`'s numeric `id` as text; `email` is the primary verified address from `/user/emails`, else null.
-- **Google** (Authlib, OpenID Connect discovery): scopes `openid email`; `provider_user_id` is `sub`; `email` only if `email_verified`.
+- **Google** (Authlib OAuth 2 client, OpenID Connect scopes): fixed endpoints `https://accounts.google.com/o/oauth2/v2/auth`, `https://oauth2.googleapis.com/token` and `https://openidconnect.googleapis.com/v1/userinfo`; scopes `openid email`; `provider_user_id` is userinfo's `sub`; `email` only if `email_verified`. No discovery and no id-token signature check: the access token comes straight from Google's token endpoint over TLS, so userinfo is trustworthy without verifying a JWT.
+- Both use Authlib's synchronous `authlib.integrations.httpx_client.OAuth2Client` (built on `httpx2`) with `token_endpoint_auth_method="client_secret_post"` and a 10 s timeout; tests pass an `httpx2.MockTransport`.
 - A provider is enabled when both `<NAME>_CLIENT_ID` and `<NAME>_CLIENT_SECRET` are set.
 - The redirect URI is `PUBLIC_BASE_URL` + `/api/auth/callback/<name>`, never derived from request headers.
 - PKCE (S256) for both.
@@ -140,7 +141,7 @@ class IdentityProvider(Protocol):
 
 ### 5.4 CSRF
 
-Every `POST`, `PUT`, `PATCH` and `DELETE` under `/api` requires the header `X-MdIt-CSRF: 1`, checked before authentication; missing or other value → 403 `csrf`. A browser cannot add a custom header to a cross-origin request without a CORS preflight, and the API sends no CORS headers; with `SameSite=Lax` this is OWASP's custom-request-header defence. `GET`, `HEAD` and the OAuth redirects are safe methods and change nothing except the callback, which is protected by `state`.
+Every `POST`, `PUT`, `PATCH` and `DELETE` under `/api` requires the header `X-MdIt-CSRF: 1`, checked by a pure ASGI middleware before routing and authentication (so unknown routes are covered too, and upload bodies still stream); missing or other value → 403 `csrf`. A browser cannot add a custom header to a cross-origin request without a CORS preflight, and the API sends no CORS headers; with `SameSite=Lax` this is OWASP's custom-request-header defence. `GET`, `HEAD` and the OAuth redirects are safe methods and change nothing except the callback, which is protected by `state`.
 
 ## 6. API
 
@@ -187,7 +188,7 @@ Version detail: summary fields plus `document_id`, `content_hash` and `images: [
 
 1. Validate the body: `parent_version_id` nullable; `message` optional, at most 500 characters (empty → null); `path` per §6.3; `images` at most 500 entries, paths per §6.3 without the `.md` rule, no duplicate paths (case-insensitive); hashes `^[0-9a-f]{64}$`.
 2. `SELECT … FOR UPDATE` the document row through the user's project (404 if not found).
-3. Latest = the remaining version with the highest number. If `parent_version_id` is not the latest's id (or not null when there is none) → **409** `version_conflict`, `details: {"latest": {id, number, created_at} | null}`.
+3. Latest = the remaining version with the highest number, read with a **locking read** (`FOR UPDATE`). A plain read would use the transaction's REPEATABLE READ snapshot, which the session lookup already fixed, and miss a version committed while this save waited for the lock (planning probe). If `parent_version_id` is not the latest's id (or not null when there is none) → **409** `version_conflict`, `details: {"latest": {id, number, created_at} | null}`.
 4. Every hash (content and images) must be in the user's `user_blobs` → else **422** `blob_missing` with the missing hashes in `details`. The content blob's `content_type` must be `text/markdown` → else 422 `blob_missing`.
 5. Insert the version with `number = next_number`, increment `next_number`, set `documents.path = path`, insert `version_images`, commit.
 
@@ -205,12 +206,12 @@ Two concurrent saves on the same parent: the row lock serializes them, so one ge
 
 **Upload checks** (`services/blobs.py`, in order):
 
-1. `hash` matches `^[0-9a-f]{64}$` (else 404 from the path pattern).
+1. `hash` matches `^[0-9a-f]{64}$` (else 404 `not_found`; the same for HEAD and GET).
 2. `Content-Type` (parameters ignored) is one of `text/markdown`, `image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/svg+xml` → else 415 `unsupported_type`.
 3. Body read in chunks; more than 5 MB (5 × 1024 × 1024 bytes) → 413 `too_large` (also when `Content-Length` says so up front).
 4. SHA-256 of the bytes equals `hash` → else 422 `hash_mismatch`.
 5. Content matches the type → else 415 `unsupported_type`: `text/markdown` decodes as UTF-8; PNG, JPEG, GIF, WebP by magic bytes; SVG parses as XML (defused: no DTDs or entities) with an `svg` root element.
-6. If the `blobs` row is missing: put the bytes in Blob Storage (`BlobStore.put` keeps an existing object), then insert the row (`size`, `content_type`); a concurrent insert of the same hash is not an error. Then insert `user_blobs` if missing.
+6. If the `blobs` row is missing: put the bytes in Blob Storage (`BlobStore.put` keeps an existing object), then insert the row (`size`, `content_type`); a concurrent insert of the same hash is not an error. Then insert `user_blobs` if missing. If that insert fails its foreign key (an account-delete sweep removed the `blobs` row meanwhile, §7.4), run this step once more from the start.
 
 The server does not rewrite SVGs (deviation from PRD §12's "SVG sanitized", P-065): the app shows images only through `<img>` with object URLs, where SVG scripts never run, and a direct visit to the blob URL gets a sandboxed download.
 
@@ -234,7 +235,7 @@ The migrations check is ready when the database revision is the code's head **or
 
 ### 7.4 Account deletion
 
-`DELETE /api/me` in one transaction: collect the user's owned hashes; delete the user (cascades sessions, projects → documents → versions → version_images, user_blobs). Then, for each collected hash with no remaining `user_blobs` row and no `versions`/`version_images` reference: delete the Blob Storage object, then the `blobs` row. Storage deletes that fail are logged and left for the later cleanup job; the account is gone either way. Shared blobs another user owns are kept.
+`DELETE /api/me` in one transaction: collect the user's owned hashes; delete the user (cascades sessions, projects → documents → versions → version_images, user_blobs). Then, for each collected hash, in its own transaction: lock the `blobs` row (`FOR UPDATE`); if no `user_blobs` row references it (locking read), delete the Blob Storage object, then the row, and commit. A concurrent upload of the same hash then waits on the row lock, fails its foreign key and retries (§6.5 step 6), re-uploading the object. Storage deletes that fail are logged and left for the later cleanup job; the account is gone either way. Shared blobs another user owns are kept.
 
 ## 8. Compose and local development
 
@@ -245,7 +246,7 @@ The migrations check is ready when the database revision is the code's head **or
 
 ## 9. Dependencies
 
-Added (exact versions chosen and checked to be at least two weeks old while planning, recorded in `decisions.md` and `uv.lock`): Authlib, the `httpx` it needs for its client, `defusedxml` for the SVG check. A planning probe checks that Authlib's `httpx` and the dev-only `httpx2` coexist in one environment.
+Checked 2026-10-25 (P-068): Authlib 1.8.0 (1.9.x is 11 days old), `defusedxml` 0.7.1, `itsdangerous` 2.2 (Starlette's `SessionMiddleware`). `httpx2` moves from the dev group to runtime dependencies: Authlib 1.8's httpx client prefers `httpx2` and treats plain `httpx` as a deprecated fallback, so `httpx` is not added. Authlib and defusedxml ship no type information, so mypy gets an `ignore_missing_imports` override for `authlib.*` and `defusedxml.*`.
 
 ## 10. Configuration
 
@@ -268,7 +269,7 @@ Only one of a provider's pair set → settings error naming the missing variable
 pytest on real MySQL 8.4 and Azurite (P-047); skipped locally when unreachable, required in CI.
 
 - **Fake provider:** route tests register a fake `IdentityProvider` whose `authorization_url` points at a fixed URL and whose `fetch_identity` returns a set identity or raises.
-- **Real providers:** GitHub and Google tested against mocked HTTP (token exchange, `/user`, `/user/emails`, Google discovery, id token / userinfo), including unverified and missing email.
+- **Real providers:** GitHub and Google tested against mocked HTTP via `httpx2.MockTransport` (token exchange with PKCE verifier and client secret in the body, `/user`, `/user/emails`, Google userinfo), including unverified and missing email.
 - **Guard tests walk `app.routes`:** every route outside the allowlist returns 401 without a session (sending the CSRF header, since CSRF is checked first); every mutating route returns 403 without the CSRF header, with or without a session. A new route cannot skip either check.
 - **Auth:** login redirect carries state and PKCE; callback with wrong state → `login_error=state`; denied → `denied`; `next` sanitizing; dev login on and off; logout invalidates the token; expired session → 401 and row deleted; cookie attributes.
 - **Versions:** first save needs a null parent; save on the latest succeeds; stale parent → 409 with `latest`; two concurrent saves on one parent → exactly one 201 and one 409; numbers not reused after delete; deleting the latest makes the previous one latest; unowned or non-markdown content hash → 422; duplicate image paths → 422; path updates `documents.path`.
@@ -281,12 +282,12 @@ pytest on real MySQL 8.4 and Azurite (P-047); skipped locally when unreachable, 
 ## 12. CI
 
 - `backend` job unchanged except setup-uv's `cache-dependency-glob: uv.lock` (relative to `working-directory`, deferred from Phase 4).
-- `compose` job, after the existing checks, runs `scripts/api-smoke.sh http://localhost:8080`: curl with two cookie jars A and B, both dev-login as `smoke`; A creates a project and a document, uploads a Markdown blob and a PNG, saves version 1, then version 2 on parent 1; B lists projects and documents, fetches the latest version and both blobs and checks their SHA-256; a save on parent 1 → 409; `DELETE /api/me` → B's `GET /api/me` → 401. The script exits non-zero on any mismatch.
+- `compose` job, after the existing checks, runs `python3 scripts/api_smoke.py http://localhost:8080` (stdlib `urllib` and `http.cookiejar`, so it also runs on Windows without curl or jq): two cookie jars A and B, both dev-login as `smoke`; A creates a project and a document, uploads a Markdown blob and a PNG, saves version 1, then version 2 on parent 1; B lists projects and documents, fetches the latest version and both blobs and checks their SHA-256; a save on parent 1 → 409; `DELETE /api/me` → B's `GET /api/me` → 401. The script exits non-zero on any mismatch.
 
 ## 13. Acceptance
 
 1. `docker compose up -d --build --wait` runs every service; `migrate` applies `0002`.
-2. `scripts/api-smoke.sh` passes against the Compose stack, locally and in CI.
+2. `scripts/api_smoke.py` passes against the Compose stack, locally and in CI.
 3. With `GITHUB_*` set to a real OAuth app, signing in through http://localhost:8080/api/auth/login/github ends at `/` with a session, and `/api/me` shows the account (manual, by the user).
 4. `MDIT_REQUIRE_SERVICES=1 pytest` passes; ruff, ruff format and mypy strict are clean.
 5. The guard tests cover every route in `app.routes`.
