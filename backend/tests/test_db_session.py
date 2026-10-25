@@ -16,6 +16,13 @@ def test_engine_uses_pymysql_without_connecting() -> None:
     engine.dispose()
 
 
+def test_engine_hides_parameters() -> None:
+    # SQL parameters can carry document paths, messages and token hashes; keep them out of logs.
+    engine = create_db_engine(fake_settings())
+    assert engine.hide_parameters is True
+    engine.dispose()
+
+
 @pytest.mark.integration
 def test_connections_use_utc_and_utf8mb4(engine: Engine) -> None:
     with engine.connect() as connection:

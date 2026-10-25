@@ -1,5 +1,6 @@
 """One error shape for every failure: {"error": {"code", "message"}} (P-052)."""
 
+from collections.abc import Mapping
 from http import HTTPStatus
 from typing import Any
 
@@ -11,9 +12,26 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 _CODES = {404: "not_found", 405: "method_not_allowed"}
 
 
-def error_response(
-    status: int, code: str, message: str, details: list[dict[str, str]] | None = None
-) -> JSONResponse:
+class ApiError(Exception):
+    """An expected failure with its own code; becomes the standard error body."""
+
+    def __init__(
+        self,
+        status: int,
+        code: str,
+        message: str,
+        details: Any = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.status = status
+        self.code = code
+        self.message = message
+        self.details = details
+        self.headers = dict(headers or {})
+
+
+def error_response(status: int, code: str, message: str, details: Any = None) -> JSONResponse:
     error: dict[str, Any] = {"code": code, "message": message}
     if details is not None:
         error["details"] = details
@@ -21,7 +39,10 @@ def error_response(
 
 
 def _message(status: int, detail: object) -> str:
-    phrase = HTTPStatus(status).phrase
+    try:
+        phrase = HTTPStatus(status).phrase
+    except ValueError:  # a status code outside the standard list
+        return "Error."
     if isinstance(detail, str) and detail and detail != phrase:
         return detail
     return phrase.capitalize() + "."
@@ -36,6 +57,12 @@ def install_error_handlers(app: FastAPI) -> None:
         )
         if exc.headers:
             response.headers.update(exc.headers)
+        return response
+
+    @app.exception_handler(ApiError)
+    async def api_error(request: Request, exc: ApiError) -> JSONResponse:
+        response = error_response(exc.status, exc.code, exc.message, exc.details)
+        response.headers.update(exc.headers)
         return response
 
     @app.exception_handler(RequestValidationError)

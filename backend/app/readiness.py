@@ -26,8 +26,24 @@ class ReadinessChecks:
     blob: Callable[[], bool]
 
 
+def _scripts() -> ScriptDirectory:
+    return ScriptDirectory.from_config(Config(str(ALEMBIC_INI)))
+
+
 def head_revision() -> str | None:
-    return ScriptDirectory.from_config(Config(str(ALEMBIC_INI))).get_current_head()
+    return _scripts().get_current_head()
+
+
+def known_revisions() -> frozenset[str]:
+    return frozenset(script.revision for script in _scripts().walk_revisions())
+
+
+def revision_is_ready(current: str | None, head: str | None, known: frozenset[str]) -> bool:
+    """At head, or at a revision this code doesn't know: a newer deploy migrated ahead
+    during a rolling update, and this pod can keep serving until it is replaced."""
+    if current is None:
+        return False
+    return current == head or current not in known
 
 
 def database_check(engine: Engine) -> Callable[[], bool]:
@@ -43,7 +59,7 @@ def database_check(engine: Engine) -> Callable[[], bool]:
     return check
 
 
-def migrations_check(engine: Engine, head: str | None) -> Callable[[], bool]:
+def migrations_check(engine: Engine, head: str | None, known: frozenset[str]) -> Callable[[], bool]:
     def check() -> bool:
         try:
             with engine.connect() as connection:
@@ -53,9 +69,11 @@ def migrations_check(engine: Engine, head: str | None) -> Callable[[], bool]:
         except SQLAlchemyError:
             log.warning("Migration state is unavailable", exc_info=True)
             return False
-        if current != head:
+        if not revision_is_ready(current, head, known):
             log.warning("Database is at revision %s; expected %s", current, head)
             return False
+        if current != head:
+            log.info("Database is at newer revision %s; this code knows %s", current, head)
         return True
 
     return check
@@ -69,7 +87,7 @@ def readiness_engine(settings: Settings) -> Engine:
 def build_readiness(engine: Engine, blobs: BlobStore) -> ReadinessChecks:
     return ReadinessChecks(
         database=database_check(engine),
-        migrations=migrations_check(engine, head_revision()),
+        migrations=migrations_check(engine, head_revision(), known_revisions()),
         # Creates the container when missing, so a backend that started before Azurite recovers.
         blob=blobs.ensure_container,
     )

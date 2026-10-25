@@ -9,6 +9,7 @@ import pytest
 from alembic.config import Config
 from pydantic import SecretStr
 from sqlalchemy import Connection
+from sqlalchemy.exc import OperationalError
 
 from app.config import Settings
 
@@ -62,6 +63,18 @@ def fake_settings(**overrides: Any) -> Settings:
     }
     values.update(overrides)
     return Settings(**values)
+
+
+# PyMySQL client errors for a server that can't be reached (as opposed to one that refused us).
+_UNREACHABLE = {2003, 2005, 2013}
+
+
+def mysql_unavailable_reason(exc: OperationalError, host: str, port: int) -> str:
+    args = getattr(exc.orig, "args", ())
+    code = args[0] if args else None
+    if code in _UNREACHABLE:
+        return f"MySQL is not reachable at {host}:{port}"
+    return f"MySQL at {host}:{port} refused the test connection (error {code})"
 
 
 def services_unavailable(reason: str) -> NoReturn:

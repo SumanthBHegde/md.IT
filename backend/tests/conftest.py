@@ -11,7 +11,12 @@ from sqlalchemy.exc import OperationalError
 from app.config import Settings
 from app.db.session import create_db_engine
 from app.storage.blobs import BlobStore
-from tests.support import alembic_config, make_test_settings, services_unavailable
+from tests.support import (
+    alembic_config,
+    make_test_settings,
+    mysql_unavailable_reason,
+    services_unavailable,
+)
 
 
 @pytest.fixture(scope="session")
@@ -25,10 +30,10 @@ def engine(test_settings: Settings) -> Iterator[Engine]:
     try:
         with engine.connect() as connection:
             connection.execute(text("SELECT 1"))
-    except OperationalError:
+    except OperationalError as exc:
         engine.dispose()
         services_unavailable(
-            f"MySQL is not reachable at {test_settings.db_host}:{test_settings.db_port}"
+            mysql_unavailable_reason(exc, test_settings.db_host, test_settings.db_port)
         )
     yield engine
     engine.dispose()

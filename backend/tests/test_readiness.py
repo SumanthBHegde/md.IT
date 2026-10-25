@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.db.session import create_db_engine
 from app.logging import configure_logging
 from app.main import create_app
-from app.readiness import database_check, migrations_check
+from app.readiness import database_check, known_revisions, migrations_check, revision_is_ready
 from app.routes.health import health
 from tests.support import fake_settings
 
@@ -67,7 +67,7 @@ def test_liveness_never_waits_for_the_worker_threads() -> None:
 
 def test_migrations_check_reports_an_unreachable_database() -> None:
     engine = create_db_engine(fake_settings())
-    assert migrations_check(engine, "0001")() is False
+    assert migrations_check(engine, "0001", frozenset({"0001"}))() is False
     engine.dispose()
 
 
@@ -89,3 +89,27 @@ def test_app_logs_go_to_stdout_at_the_configured_level(
     out = capsys.readouterr().out
     assert "shown line" in out
     assert "hidden line" not in out
+
+
+KNOWN = frozenset({"0001", "0002"})
+
+
+def test_head_revision_is_ready() -> None:
+    assert revision_is_ready("0002", "0002", KNOWN) is True
+
+
+def test_newer_unknown_revision_is_ready() -> None:
+    # A newer deploy migrated ahead during a rolling update; old pods stay ready.
+    assert revision_is_ready("9999", "0002", KNOWN) is True
+
+
+def test_older_known_revision_is_not_ready() -> None:
+    assert revision_is_ready("0001", "0002", KNOWN) is False
+
+
+def test_missing_revision_is_not_ready() -> None:
+    assert revision_is_ready(None, "0002", KNOWN) is False
+
+
+def test_known_revisions_lists_every_migration() -> None:
+    assert {"0001"} <= known_revisions()

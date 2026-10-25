@@ -16,12 +16,14 @@ def table_names(engine: Engine) -> set[str]:
 
 
 def test_downgrade_then_upgrade_again(migrated: Engine) -> None:
-    with migrated.begin() as connection:
-        command.downgrade(alembic_config(connection), "base")
-    assert table_names(migrated) == {"alembic_version"}
-
-    with migrated.begin() as connection:
-        command.upgrade(alembic_config(connection), "head")
+    try:
+        with migrated.begin() as connection:
+            command.downgrade(alembic_config(connection), "base")
+        assert table_names(migrated) == {"alembic_version"}
+    finally:
+        # Later tests need the schema even when the assertion above fails.
+        with migrated.begin() as connection:
+            command.upgrade(alembic_config(connection), "head")
     assert table_names(migrated) == APP_TABLES | {"alembic_version"}
 
 
