@@ -35,6 +35,7 @@ jobs:
             backend:
               - 'backend/**'
               - 'mysql/**'
+              - 'scripts/**'
               - 'docker-compose.yml'
               - '.github/workflows/ci.yml'
 
@@ -78,7 +79,8 @@ jobs:
         with:
           working-directory: backend
           enable-cache: true
-          cache-dependency-glob: backend/uv.lock
+          # Relative to working-directory.
+          cache-dependency-glob: uv.lock
       - run: uv sync --locked
       - run: uv run ruff check .
       - run: uv run ruff format --check .
@@ -105,6 +107,8 @@ jobs:
           curl -fsS http://localhost:8080/ | grep -q '<div id="root">'
           curl -fsS http://localhost:8080/api/health
           curl -fsS http://localhost:8080/api/health/ready
+      - name: API smoke (save on one browser, restore on another)
+        run: python3 scripts/api_smoke.py http://localhost:8080
       - name: Logs
         if: failure()
         run: docker compose logs
