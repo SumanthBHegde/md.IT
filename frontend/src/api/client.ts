@@ -45,6 +45,8 @@ function toApiError(status: number, error: unknown): ApiError {
   if (body && typeof body.code === 'string') {
     return new ApiError(status, body.code, typeof body.message === 'string' ? body.message : `HTTP ${status}`, body.details);
   }
+  // A gateway answering for a backend that is down (no md.IT error body): as good as unreachable.
+  if (status === 502 || status === 503 || status === 504) return new ApiError(status, 'unavailable', OFFLINE_MESSAGE);
   return new ApiError(status, `http_${status}`, `Something went wrong (HTTP ${status}).`);
 }
 

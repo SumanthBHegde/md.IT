@@ -36,9 +36,19 @@ describe('api client', () => {
   });
 
   it('falls back to http_<status> for a non-JSON error', async () => {
-    const { fetchImpl } = stubFetch(new Response('<html>Bad gateway</html>', { status: 502, headers: { 'Content-Type': 'text/html' } }));
+    const { fetchImpl } = stubFetch(new Response('<html>Oops</html>', { status: 500, headers: { 'Content-Type': 'text/html' } }));
     const api = createApi(fetchImpl);
-    await expect(request(() => api.GET('/api/projects'))).rejects.toMatchObject({ status: 502, code: 'http_502' });
+    await expect(request(() => api.GET('/api/projects'))).rejects.toMatchObject({ status: 500, code: 'http_500' });
+  });
+
+  it.each([502, 503, 504])('a gateway %i with nothing behind it reads as unreachable', async (status) => {
+    const { fetchImpl } = stubFetch(new Response('<html>Bad gateway</html>', { status, headers: { 'Content-Type': 'text/html' } }));
+    const api = createApi(fetchImpl);
+    await expect(request(() => api.GET('/api/projects'))).rejects.toMatchObject({
+      status,
+      code: 'unavailable',
+      message: 'md.IT’s server can’t be reached.',
+    });
   });
 
   it('maps a network failure to offline', async () => {
