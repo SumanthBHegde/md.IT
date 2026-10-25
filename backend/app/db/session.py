@@ -7,10 +7,10 @@ from fastapi import Request
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session
 
-from app.config import Settings, database_url
+from app.config import DatabaseSettings, database_url
 
 
-def create_db_engine(settings: Settings, *, io_timeout: int = 30, **pool: Any) -> Engine:
+def create_db_engine(settings: DatabaseSettings, *, io_timeout: int = 30, **pool: Any) -> Engine:
     """Lazy: nothing connects until first use. Stored times are UTC (P-049).
 
     `io_timeout` bounds every read and write, so a database that accepts connections but

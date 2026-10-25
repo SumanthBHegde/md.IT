@@ -5,7 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import Connection
 
-from app.config import Settings
+from app.config import DatabaseSettings
 from app.db import models  # noqa: F401  (registers the tables on Base.metadata)
 from app.db.base import Base
 from app.db.session import create_db_engine
@@ -27,7 +27,8 @@ def run_migrations_online() -> None:
         return
     if config.config_file_name is not None:
         fileConfig(config.config_file_name, disable_existing_loggers=False)
-    engine = create_db_engine(Settings())  # type: ignore[call-arg]  # values come from env vars
+    # Database credentials only: the migrate step needs no blob or sign-in secrets.
+    engine = create_db_engine(DatabaseSettings())  # type: ignore[call-arg]  # values come from env vars
     with engine.connect() as connection:
         run_migrations(connection)
     engine.dispose()

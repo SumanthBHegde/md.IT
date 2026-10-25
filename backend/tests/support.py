@@ -18,6 +18,9 @@ AZURITE_ACCOUNT_KEY = (
 )
 START_HINT = "Start them with: docker compose up -d --wait mysql azurite"
 BACKEND_DIR = Path(__file__).resolve().parents[1]
+# TestClient talks https, so Secure cookies are sent back.
+TEST_BASE_URL = "https://testserver"
+TEST_SESSION_SECRET = "test-session-secret-" + "x" * 16
 
 
 def azurite_connection_string(host: str = "127.0.0.1", port: int = 10000) -> str:
@@ -42,6 +45,8 @@ def make_test_settings() -> Settings:
             env("TEST_BLOB_CONNECTION_STRING", azurite_connection_string())
         ),
         blob_container=f"test-{uuid.uuid4().hex[:12]}",
+        public_base_url=TEST_BASE_URL,
+        session_secret=SecretStr(TEST_SESSION_SECRET),
     )
 
 
@@ -52,6 +57,8 @@ def fake_settings(**overrides: Any) -> Settings:
         "db_port": 1,
         "db_password": SecretStr("unused"),
         "blob_connection_string": SecretStr(azurite_connection_string(port=1)),
+        "public_base_url": TEST_BASE_URL,
+        "session_secret": SecretStr(TEST_SESSION_SECRET),
     }
     values.update(overrides)
     return Settings(**values)
