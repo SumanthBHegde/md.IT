@@ -4,9 +4,9 @@ Single source of truth for project progress. **Read before starting any work; up
 
 ## Current state
 
-- **Phase:** 5b (login, versions and sync in the browser): spec written; writing the plan, then native build (user asked to start directly)
+- **Phase:** 5b (login, versions and sync in the browser): building (native execution, P-084)
 - **Branch:** `phase-5b-sync-frontend` (from `main` at 54a2a64; frontend 417 tests, backend 308)
-- **Next step:** write the 5b implementation plan from `docs/superpowers/specs/2026-10-25-phase-5b-sync-frontend-design.md`, then build it. Acceptance 3 of 5a (real GitHub sign-in) still waits for the user
+- **Next step:** Phase 5b Task 1 (typed API client) of `docs/superpowers/plans/2026-10-25-phase-5b-sync-frontend.md` (9 tasks). Acceptance 3 of 5a (real GitHub sign-in) still waits for the user
 - **Deferred minors from Phase 5a review:** oversize callback `code`/`state`/`error` or login `next` give JSON 422 instead of the login_error / "/" fallback; the Compose gateway's nginx access log records OAuth query strings; account deletion sweeps blobs inside the request (thousands → proxy timeout); `list_projects` counts every user's documents before joining; uploads hold a DB connection while the body streams (Phase 6 Ingress buffering); C1 control and bidi characters accepted in paths; a new sign-in doesn't end the browser's previous session; bodies over 6 MB get nginx's HTML 413; 0002 doesn't backfill `next_number`
 - **Notes for later phases (from Phase 4 review):** don't name the MySQL Service `db` (K8s service links would set `DB_PORT`); readiness takes ~4 s when a Compose container is stopped (probe timeouts in Phase 6). The other Phase 4 deferred items were fixed in 5a (P-066)
 - **Deferred minors from Phase 3 review:** files inside a skipped folder aren't counted as skipped; a failed settings write after import lets a retry create a duplicate project; print iframe has no sandbox attribute; zip entry names keep Windows-forbidden characters; export CSS (~89 kB) is in the main bundle; single-document export reads every image's bytes; Deflate64/LZMA zips get "isn’t a zip"; no test for the 500 MB limit; Reload + cancelled leave prompt can lose old lazy chunks; a clash rename can exceed 200 characters
@@ -27,7 +27,7 @@ Single source of truth for project progress. **Read before starting any work; up
 | 2. Technical rendering | Done — merged 2026-10-02 (PR #2) |
 | 3. Customization and export | Done — merged 2026-10-02 (PR #3) |
 | 4. Backend foundation | Done — merged 2026-10-08 (PR #4) |
-| 5. Login and versions | 5a done — merged 2026-10-25 (PR #5); 5b spec written — planning |
+| 5. Login and versions | 5a done — merged 2026-10-25 (PR #5); 5b building — Task 0 of 9 |
 | 6. Kubernetes locally | Not started |
 | 7. Azure | Not started |
 | 8. Stretch | Not started |
@@ -131,3 +131,4 @@ Newest last. Format: `YYYY-MM-DD — what was done (files / commits)`.
 - 2026-10-25 — Pushed `phase-5-login-versions` and opened PR #5 (https://github.com/pavannaik2004/md.IT/pull/5) at the user's request. Before that: backend 308 passed with services required; frontend unchanged.
 - 2026-10-25 — Found PR #5 merged on 2026-10-25 (merge commit 54a2a64; CI changes, frontend, backend, compose incl. the API smoke all green). Fast-forwarded local `main`, deleted the local Phase 5 branch, created `phase-5b-sync-frontend`. Started Phase 5b brainstorming.
 - 2026-10-25 — User opted out of the question round ("you can directly start"). Read the workspace, side panel, store, draft hook, export and design-system VersionItem code. Probes (scratchpad): openapi-typescript 7.13.0 generates types from the 5a OpenAPI and openapi-fetch 0.17.0 compiles against them under TypeScript 6.0.3 (wrong fields are caught); openapi-typescript's peer range is TS 5, so it runs pinned via npx. Wrote the 5b design spec (`docs/superpowers/specs/2026-10-25-phase-5b-sync-frontend-design.md`). (decisions P-075…P-083)
+- 2026-10-25 — Wrote the 5b implementation plan (9 tasks: typed API client; store cloud links; session state; save flow; load/restore/copy/history ops; workspace account menu, Save version and conflicts; history panel and viewer; new-device download; browser verification), `docs/superpowers/plans/2026-10-25-phase-5b-sync-frontend.md`. Native execution chosen by the implementer since the user asked to start directly (decision P-084).
