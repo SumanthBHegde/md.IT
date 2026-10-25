@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 from app.auth import SESSION_COOKIE
 from app.config import Settings
 from app.db.models import User
-from app.services.accounts import Identity, upsert_user
+from app.services.accounts import upsert_user
+from app.services.oauth import Identity, ProviderError
 from app.services.sessions import create_session
 
 # Azurite's published development key, not a secret.
@@ -105,3 +106,26 @@ def sign_in(client: TestClient, engine: Engine, name: str = "alice") -> User:
         token = create_session(db, user, days=30)
     client.cookies.set(SESSION_COOKIE, token)
     return user
+
+
+class FakeProvider:
+    """An IdentityProvider that never leaves the process; records what the routes sent it."""
+
+    def __init__(
+        self, name: str = "github", identity: Identity | None = None, error: bool = False
+    ) -> None:
+        self.name = name
+        self.identity = identity or Identity(name, "1001", "alice@example.com")
+        self.error = error
+        self.last_verifier: str | None = None
+        self.last_code: str | None = None
+
+    def authorization_url(self, redirect_uri: str, state: str, code_verifier: str) -> str:
+        self.last_verifier = code_verifier
+        return f"https://provider.test/authorize?state={state}"
+
+    def fetch_identity(self, redirect_uri: str, code: str, code_verifier: str) -> Identity:
+        self.last_code = code
+        if self.error:
+            raise ProviderError(f"{self.name}: fake failure")
+        return self.identity

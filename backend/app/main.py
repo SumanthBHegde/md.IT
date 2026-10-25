@@ -1,7 +1,7 @@
 """md.IT API. Uvicorn builds it with `--factory app.main:create_app`, so importing this
 module never reads the environment."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,11 +14,14 @@ from app.errors import install_error_handlers
 from app.logging import configure_logging
 from app.readiness import ReadinessChecks, build_readiness, readiness_engine
 from app.routes import auth, health, me
+from app.services.oauth import IdentityProvider, build_providers
 from app.storage.blobs import BlobStore
 
 
 def create_app(
-    settings: Settings | None = None, readiness: ReadinessChecks | None = None
+    settings: Settings | None = None,
+    readiness: ReadinessChecks | None = None,
+    providers: Mapping[str, IdentityProvider] | None = None,
 ) -> FastAPI:
     settings = settings or Settings()  # type: ignore[call-arg]  # values come from env vars
     configure_logging(settings.log_level)
@@ -45,6 +48,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.settings = settings
+    app.state.providers = dict(providers) if providers is not None else build_providers(settings)
     app.state.engine = engine
     app.state.blobs = blobs
     app.state.readiness = readiness or build_readiness(probe_engine, blobs)

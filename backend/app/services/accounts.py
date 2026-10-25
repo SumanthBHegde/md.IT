@@ -1,18 +1,13 @@
 """Accounts: finding or creating the user behind a sign-in."""
 
-from typing import NamedTuple
-
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import User
+from app.services.oauth import Identity
 
-
-class Identity(NamedTuple):
-    provider: str  # "github" | "google" | "dev"
-    provider_user_id: str
-    email: str | None
+__all__ = ["Identity", "upsert_user"]
 
 
 def _find(db: Session, identity: Identity) -> User | None:
