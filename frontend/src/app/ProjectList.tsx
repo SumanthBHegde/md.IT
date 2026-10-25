@@ -9,6 +9,7 @@ import {
 } from '../store';
 import { Button, Callout, EmptyState, IconButton, MenuButton, Wordmark } from '../ui';
 import { AccountMenu } from './AccountMenu';
+import { CloudProjects } from './CloudProjects';
 import { ImportDialog } from './ImportDialog';
 import { StorageWarning } from './StorageWarning';
 import { ThemeMenu } from './ThemeMenu';
@@ -107,6 +108,7 @@ export function ProjectList() {
             ))}
           </ul>
         )}
+        <CloudProjects onDownloaded={(projectId, notice) => navigate(`/p/${projectId}`, { state: { notice } })} />
       </main>
 
       {dialog?.kind === 'create' && (

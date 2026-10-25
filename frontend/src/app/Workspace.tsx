@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { VersionSummary } from '../api';
 import { useAuth } from '../auth';
 import type { EditorHandle } from '../editor';
@@ -94,6 +94,12 @@ export function Workspace() {
   const [notice, setNotice] = useState<NoticeMessage | null>(null);
   const showNotice = useCallback((text: string) => setNotice({ id: Date.now() + Math.random(), text }), []);
   const dismissNotice = useCallback(() => setNotice(null), []);
+  // A page that sent us here may hand over a notice (the project list after a download).
+  const location = useLocation();
+  const arrivalNotice = (location.state as { notice?: unknown } | null)?.notice;
+  useEffect(() => {
+    if (typeof arrivalNotice === 'string') showNotice(arrivalNotice);
+  }, [arrivalNotice, showNotice]);
   const currentText = useCallback(() => editorRef.current?.getText() ?? draft.previewSource, [draft.previewSource]);
   const versions = useVersionActions({ docId, draft, currentText, notify: showNotice, openDocument });
   const versionSaved = draft.saveState === 'saved' && docRow !== undefined && !docRow.dirty && docRow.headVersionId !== undefined;
