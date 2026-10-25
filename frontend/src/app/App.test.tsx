@@ -27,4 +27,9 @@ describe('App', () => {
     await setSetting(SETTINGS.theme, 'system');
     await waitFor(() => expect(document.documentElement.dataset.theme).toBeUndefined());
   });
+
+  it('says why sign-in failed when the address carries login_error', async () => {
+    render(<MemoryRouter initialEntries={['/?login_error=state']}><App /></MemoryRouter>);
+    expect(await screen.findByText('Sign-in took too long or started in another tab. Try again.')).toBeInTheDocument();
+  });
 });

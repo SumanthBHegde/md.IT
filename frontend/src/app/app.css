@@ -50,3 +50,5 @@ html, body, #root { height: 100%; }
 .projects-actions { display: flex; align-items: center; gap: var(--space-2); }
 .import-skipped { margin: 0 0 var(--space-3); padding-left: 1.2em; font: 400 13px/20px var(--font-sans); overflow-wrap: anywhere; }
 .update-notice { position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%); width: min(480px, calc(100% - var(--space-8))); z-index: 40; }
+/* Coming back from a failed sign-in (P-077): top of the page, above everything. */
+.login-notice { position: fixed; left: 50%; top: calc(44px + var(--space-3)); transform: translateX(-50%); width: min(480px, calc(100% - var(--space-8))); z-index: 40; }

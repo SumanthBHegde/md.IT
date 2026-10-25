@@ -1,7 +1,14 @@
 import '@testing-library/jest-dom/vitest';
 import 'fake-indexeddb/auto';
 import { cleanup } from '@testing-library/react';
-import { afterEach } from 'vitest';
+import { afterEach, beforeEach } from 'vitest';
+import { createApi, setApi } from '../api';
+import { createFakeApi } from './fakeApi';
+
+// Every test starts with a signed-out, in-memory server: nothing reaches the network.
+beforeEach(() => {
+  setApi(createApi(createFakeApi().fetch));
+});
 
 afterEach(() => {
   cleanup();
