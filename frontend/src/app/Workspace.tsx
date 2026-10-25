@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import type { VersionSummary } from '../api';
 import { useAuth } from '../auth';
 import type { EditorHandle } from '../editor';
 import { exportDocument, exportProject } from '../export';
@@ -7,12 +8,14 @@ import { analyze, render } from '../renderer';
 import { SEARCH_INPUT_ID, SearchBox, SearchResults, type SearchMatch } from '../search';
 import { toCssVars, useRenderingSettings } from '../settings';
 import { IMAGE_ACCEPT, SETTINGS, useDocuments, useProject, useSettingState, type ImageAsset } from '../store';
+import { readVersion } from '../sync';
 import { FileTree } from '../tree';
 import { Button, IconButton, SaveStatus, SegmentedControl, Wordmark, type SegmentedOption } from '../ui';
 import { AccountMenu } from './AccountMenu';
 import { ConflictDialog } from './ConflictDialog';
 import { DocumentArea } from './DocumentArea';
 import { ExportMenu, type ExportKind } from './ExportMenu';
+import { HistoryPanel } from './HistoryPanel';
 import { addImagesNextTo, imageMarkdown } from './imageInsert';
 import { MissingPage } from './MissingPage';
 import { Notice, type NoticeMessage } from './Notice';
@@ -23,6 +26,7 @@ import { ThemeMenu } from './ThemeMenu';
 import { useDocumentDraft } from './useDocumentDraft';
 import { useProjectFiles } from './useProjectFiles';
 import { useVersionActions } from './useVersionActions';
+import { VersionViewer } from './VersionViewer';
 
 export type ViewMode = 'split' | 'editor' | 'preview';
 
@@ -52,7 +56,7 @@ export function Workspace() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docReady = draft.status === 'ready';
   const analysis = useMemo(
-    () => (panelOpen && panelTab !== 'settings' && docReady ? analyze(draft.previewSource) : null),
+    () => ((panelTab === 'outline' || panelTab === 'stats') && panelOpen && docReady ? analyze(draft.previewSource) : null),
     [panelOpen, panelTab, docReady, draft.previewSource],
   );
   const [query, setQuery] = useState('');
@@ -93,6 +97,28 @@ export function Workspace() {
   const currentText = useCallback(() => editorRef.current?.getText() ?? draft.previewSource, [draft.previewSource]);
   const versions = useVersionActions({ docId, draft, currentText, notify: showNotice, openDocument });
   const versionSaved = draft.saveState === 'saved' && docRow !== undefined && !docRow.dirty && docRow.headVersionId !== undefined;
+  const [viewing, setViewing] = useState<{ version: VersionSummary; text: string; latestId: string } | null>(null);
+  const viewerHtml = useMemo(() => (viewing ? render(viewing.text, files.context) : ''), [viewing, files.context]);
+  useEffect(() => setViewing(null), [docId]);
+  // The editor was unmounted while the viewer showed; it must come back with the stored text,
+  // not the text it was first loaded with (edits since then would vanish, then be overwritten).
+  const { reload: reloadDraft } = draft;
+  const closeViewer = useCallback(() => {
+    setViewing(null);
+    reloadDraft();
+  }, [reloadDraft]);
+  const openVersion = useCallback(
+    async (version: VersionSummary, latestId: string) => {
+      try {
+        await draft.flush();
+        const { text } = await readVersion(version.id);
+        setViewing({ version, text, latestId });
+      } catch (error) {
+        showNotice(`Couldn’t open version ${version.number}: ${error instanceof Error ? error.message.replace(/[.\s]+$/, '') : 'something went wrong'}.`);
+      }
+    },
+    [draft, showNotice],
+  );
 
   const insertFiles = useCallback(
     async (list: File[], at: number | null) => {
@@ -246,6 +272,24 @@ export function Workspace() {
             onImageFiles={(list, at) => void insertFiles(list, at)}
             onOpenDocument={openDocument}
             onNotice={showNotice}
+            viewer={
+              viewing && (
+                <VersionViewer
+                  version={viewing.version}
+                  html={viewerHtml}
+                  theme={theme}
+                  proseStyle={proseStyle}
+                  onNotice={showNotice}
+                  onClose={closeViewer}
+                  onRestore={async () => {
+                    if (await versions.restore(viewing.version.id, viewing.version.number, viewing.latestId)) setViewing(null);
+                  }}
+                  onDelete={async () => {
+                    if (await versions.remove(viewing.version.id)) closeViewer();
+                  }}
+                />
+              )
+            }
           />
           <Notice notice={notice} onDismiss={dismissNotice} />
         </main>
@@ -258,6 +302,15 @@ export function Workspace() {
             rendering={rendering}
             onRenderingChange={updateRendering}
             onRenderingReset={resetRendering}
+            history={
+              <HistoryPanel
+                docId={docId}
+                headVersionId={docRow?.headVersionId}
+                signedIn={auth.state === 'signed-in'}
+                refreshKey={versions.refreshKey}
+                onOpen={(version, latestId) => void openVersion(version, latestId)}
+              />
+            }
           />
         )}
       </div>

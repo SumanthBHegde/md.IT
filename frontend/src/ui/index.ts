@@ -17,3 +17,4 @@ export { SaveStatus, type SaveStatusState } from './SaveStatus';
 export { SegmentedControl, type SegmentedControlProps, type SegmentedOption } from './SegmentedControl';
 export { TreeItem, type TreeItemProps } from './TreeItem';
 export { Wordmark } from './Wordmark';
+export { VersionItem, type VersionItemProps } from './VersionItem';

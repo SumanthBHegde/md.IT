@@ -52,6 +52,8 @@ async function saveVersionNow(message?: string) {
   const dialog = within(screen.getByRole('dialog', { name: 'Save version' }));
   if (message) await userEvent.type(dialog.getByLabelText('Message (optional)'), message);
   await userEvent.click(dialog.getByRole('button', { name: 'Save version' }));
+  // The dialog closes once the save is over; the next step must not race it.
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Save version' })).not.toBeInTheDocument());
 }
 
 beforeEach(async () => {
@@ -171,4 +173,64 @@ describe('Workspace versions', () => {
       expect(statusText()).toContain('Couldn’t save a version: md.IT’s server can’t be reached. Your work is still saved in this browser.'),
     );
   });
+
+  describe('history', () => {
+    async function twoVersions() {
+      fake.signIn();
+      const { project, doc } = await projectWithDocument();
+      const view = renderAt(`/p/${project.id}/d/${doc.id}`);
+      await saveVersionNow('First');
+      await waitFor(() => expect(fake.versions.size).toBe(1));
+      type(view.container, '\n\nSecond');
+      await saveVersionNow();
+      await waitFor(() => expect(fake.versions.size).toBe(2));
+      await userEvent.click(screen.getByRole('button', { name: 'Show panel' }));
+      await userEvent.click(await screen.findByRole('radio', { name: 'History' }));
+      await screen.findByRole('button', { name: /^v2/ });
+      return { ...view, project, doc };
+    }
+
+    it('opening a version shows it read-only; Restore puts its text in the editor and marks dirty', async () => {
+      const { container, doc } = await twoVersions();
+      await userEvent.click(screen.getByRole('button', { name: /^v1/ }));
+      expect(await screen.findByText('Version 1 · read-only')).toBeInTheDocument();
+      expect(container.querySelector('.cm-editor')).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await waitFor(() => expect(editorText(container)).toBe('# Hello\n\nWorld'));
+      expect(statusText()).toContain('Restored version 1.');
+      const stored = (await getDocument(doc.id))!;
+      expect(stored.dirty).toBe(true);
+      expect(stored.headVersionId).toBe([...fake.versions.values()].find((v) => v.number === 2)!.id);
+    });
+
+    it('Delete asks, then removes the version and refreshes the list', async () => {
+      await twoVersions();
+      await userEvent.click(screen.getByRole('button', { name: /^v1/ }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+      expect(screen.getByText('Delete version 1? This can’t be undone.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Delete version' }));
+      await waitFor(() => expect(screen.queryByRole('button', { name: /^v1/ })).not.toBeInTheDocument());
+      expect([...fake.versions.values()].map((v) => v.number)).toEqual([2]);
+      expect(screen.queryByText('Version 1 · read-only')).not.toBeInTheDocument();
+    });
+
+    it('Close returns to the editor', async () => {
+      const { container } = await twoVersions();
+      await userEvent.click(screen.getByRole('button', { name: /^v1/ }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(container.querySelector('.cm-editor')).not.toBeNull());
+      expect(editorText(container)).toBe('# Hello\n\nWorld\n\nSecond');
+    });
+
+    it('switching documents closes the viewer', async () => {
+      const { project } = await twoVersions();
+      const other = await createDocument(project.id, null, 'Other');
+      await userEvent.click(screen.getByRole('button', { name: /^v1/ }));
+      await screen.findByText('Version 1 · read-only');
+      await userEvent.click(await screen.findByText('Other.md'));
+      await waitFor(() => expect(screen.getByTestId('where').textContent).toBe(`/p/${project.id}/d/${other.id}`));
+      expect(screen.queryByText('Version 1 · read-only')).not.toBeInTheDocument();
+    });
+  });
 });
+
