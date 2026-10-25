@@ -190,6 +190,9 @@ body { margin: 0; background: var(--paper); color: var(--ink); font-family: var(
 .md-version.is-current .md-version-num { color: var(--accent); }
 
 /* ---------- md.IT app extensions (upstream to the design system: decisions P-013) ---------- */
+/* Dialogs above everything (P-086): a scrim rendered inside the toolbar or tree must not sit under the
+   positioned workspace area. Above notices (5), menus (30) and the update/login notices (40). */
+.md-scrim { z-index: 50; }
 /* VersionItem as a <button> (P-083): reset the button chrome. */
 .md-version { width: 100%; border: 0; background: none; text-align: left; font: inherit; color: inherit; }
 .md-version:hover { background: color-mix(in srgb, var(--ink) 5%, transparent); }
