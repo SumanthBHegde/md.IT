@@ -8,11 +8,12 @@ from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
 
 from app.config import Settings
+from app.csrf import CsrfMiddleware
 from app.db.session import create_db_engine
 from app.errors import install_error_handlers
 from app.logging import configure_logging
 from app.readiness import ReadinessChecks, build_readiness, readiness_engine
-from app.routes import health
+from app.routes import auth, health, me
 from app.storage.blobs import BlobStore
 
 
@@ -43,9 +44,13 @@ def create_app(
         docs_url="/api/docs",
         redoc_url=None,
     )
+    app.state.settings = settings
     app.state.engine = engine
     app.state.blobs = blobs
     app.state.readiness = readiness or build_readiness(probe_engine, blobs)
     install_error_handlers(app)
+    app.add_middleware(CsrfMiddleware)
     app.include_router(health.router)
+    app.include_router(auth.router)
+    app.include_router(me.router)
     return app

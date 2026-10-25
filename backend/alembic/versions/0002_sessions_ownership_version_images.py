@@ -97,12 +97,14 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # 0001's CHECK can't hold `dev` users, so they (and, by cascade, their projects) go first;
+    # otherwise the CHECK restore fails after the tables below are already dropped.
+    op.execute("DELETE FROM users WHERE provider = 'dev'")
     op.drop_table("version_images")
     op.drop_table("user_blobs")
     op.drop_table("sessions")
     op.drop_column("documents", "next_number")
     op.drop_constraint(op.f("ck_users_provider"), "users", type_="check")
-    # Fails while any `dev` users exist; delete them first (local development only).
     op.create_check_constraint(
         op.f("ck_users_provider"), "users", "provider IN ('github', 'google')"
     )

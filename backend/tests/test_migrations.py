@@ -64,3 +64,27 @@ def test_downgrade_to_0001_and_back(migrated: Engine) -> None:
         with migrated.begin() as connection:
             command.upgrade(alembic_config(connection), "head")
     assert table_names(migrated) == APP_TABLES | {"alembic_version"}
+
+
+def test_downgrade_with_dev_users_present(migrated: Engine) -> None:
+    # 0001's CHECK can't hold `dev` users; the downgrade must not fail halfway (MySQL DDL
+    # isn't transactional, so a failure leaves tables dropped and the revision unchanged).
+    with migrated.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO users (public_id, provider, provider_user_id) "
+                "VALUES (UUID(), 'dev', 'x')"
+            )
+        )
+    try:
+        with migrated.begin() as connection:
+            command.downgrade(alembic_config(connection), "0001")
+        with migrated.connect() as connection:
+            assert (
+                connection.execute(text("SELECT version_num FROM alembic_version")).scalar()
+                == "0001"
+            )
+    finally:
+        with migrated.begin() as connection:
+            command.upgrade(alembic_config(connection), "head")
+            connection.execute(text("DELETE FROM users"))

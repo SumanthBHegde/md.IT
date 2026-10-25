@@ -7,11 +7,17 @@ from typing import Any, NoReturn
 
 import pytest
 from alembic.config import Config
+from fastapi.testclient import TestClient
 from pydantic import SecretStr
-from sqlalchemy import Connection
+from sqlalchemy import Connection, Engine
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
+from app.auth import SESSION_COOKIE
 from app.config import Settings
+from app.db.models import User
+from app.services.accounts import Identity, upsert_user
+from app.services.sessions import create_session
 
 # Azurite's published development key, not a secret.
 AZURITE_ACCOUNT_KEY = (
@@ -90,3 +96,12 @@ def alembic_config(connection: Connection) -> Config:
     config = Config(str(BACKEND_DIR / "alembic.ini"))
     config.attributes["connection"] = connection
     return config
+
+
+def sign_in(client: TestClient, engine: Engine, name: str = "alice") -> User:
+    """Sign the client in as dev user `name` without going through a login route."""
+    with Session(engine, expire_on_commit=False) as db:
+        user = upsert_user(db, Identity("dev", name, None))
+        token = create_session(db, user, days=30)
+    client.cookies.set(SESSION_COOKIE, token)
+    return user
