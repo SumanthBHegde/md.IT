@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApi, setApi } from '../api';
 import { AuthProvider } from '../auth';
-import { clearDatabase, createDocument, createProject, getDocument, saveDocumentContent } from '../store';
+import { addImage, clearDatabase, createDocument, createProject, getDocument, saveDocumentContent } from '../store';
 import { createFakeApi, type FakeApi } from '../test/fakeApi';
 import { Workspace } from './Workspace';
 
@@ -162,6 +162,17 @@ describe('Workspace versions', () => {
     await waitFor(() => expect(storedWhenLeaving).toBe('# Hello\n\nWorld\n\nNot autosaved yet'));
   });
 
+  it('names an image the server refused and saves without it (final review I3)', async () => {
+    fake.signIn();
+    const { project, doc } = await projectWithDocument('![drawing](d.svg)\n');
+    const svg = new TextEncoder().encode('<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd"><svg xmlns="http://www.w3.org/2000/svg"/>');
+    await addImage(project.id, null, { name: 'd.svg', type: 'image/svg+xml', bytes: svg.buffer as ArrayBuffer });
+    renderAt(`/p/${project.id}/d/${doc.id}`);
+    await saveVersionNow();
+    await waitFor(() => expect(statusText()).toContain('Saved version 1 without d.svg: the server couldn’t accept that image.'));
+    expect([...fake.versions.values()][0]!.images).toEqual([]);
+  });
+
   it('reports an unreachable server when saving', async () => {
     fake.signIn();
     const { project, doc } = await projectWithDocument();
@@ -201,6 +212,21 @@ describe('Workspace versions', () => {
       const stored = (await getDocument(doc.id))!;
       expect(stored.dirty).toBe(true);
       expect(stored.headVersionId).toBe([...fake.versions.values()].find((v) => v.number === 2)!.id);
+    });
+
+    it('Restore asks first when there are changes since the last version (final review I4)', async () => {
+      const { container } = await twoVersions();
+      type(container, '\n\nNot saved as a version'); // opening a version writes it first
+      await userEvent.click(screen.getByRole('button', { name: /^v1/ }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+      expect(
+        screen.getByText('Restore version 1? Your changes since the last saved version will be replaced.'),
+      ).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.getByText('Version 1 · read-only')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await userEvent.click(screen.getByRole('button', { name: 'Restore version' }));
+      await waitFor(() => expect(editorText(container)).toBe('# Hello\n\nWorld'));
     });
 
     it('Delete asks, then removes the version and refreshes the list', async () => {

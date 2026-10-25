@@ -213,6 +213,12 @@ export function createFakeApi(): FakeApi {
         const bytes = new Uint8Array(await request.arrayBuffer());
         if (sha256Hex(bytes) !== hash) return error(422, 'hash_mismatch', 'The content doesn’t match its hash.');
         const contentType = (request.headers.get('content-type') ?? '').split(';')[0]!.trim();
+        // The server's content checks that bite real files (5a spec 6.5): DTDs in SVG, wrong magic bytes.
+        const head = new TextDecoder().decode(bytes.slice(0, 512));
+        const pngOk = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
+        if ((contentType === 'image/svg+xml' && head.includes('<!DOCTYPE')) || (contentType === 'image/png' && !pngOk)) {
+          return error(415, 'unsupported_type', `The content is not valid ${contentType}.`);
+        }
         const created = !blob;
         fake.blobs.set(hash, { bytes, content_type: contentType });
         return json(created ? 201 : 200, { hash, size: bytes.byteLength, content_type: contentType });

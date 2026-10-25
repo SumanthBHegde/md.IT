@@ -74,9 +74,10 @@ describe('download', () => {
     const second = cloudDocument(project.id, 'A.md');
     fake.addVersion(second.id, '# second');
     const result = await downloadProject(project, api());
+    // The most recently saved one wins (final review I2).
     expect(result.documents).toBe(1);
-    expect(result.skipped).toEqual(['A.md (a document with this name is already there)']);
-    expect((await listDocuments(result.projectId)).map((d) => d.content)).toEqual(['# first']);
+    expect(result.skipped).toEqual(['a.md (a document with this name is already there)']);
+    expect((await listDocuments(result.projectId)).map((d) => d.content)).toEqual(['# second']);
   });
 
   it('reports an image whose path another file holds', async () => {
@@ -102,4 +103,33 @@ describe('download', () => {
     expect(result.skipped).toEqual([]);
     expect(await listImages(result.projectId)).toHaveLength(1);
   });
+
+  it('merges a folder saved under two spellings (final review I1)', async () => {
+    const project = cloudProject();
+    fake.addVersion(cloudDocument(project.id, 'notes/a.md').id, '# a');
+    fake.addVersion(cloudDocument(project.id, 'Notes/b.md').id, '# b');
+    const hash = fake.putBlob(PNG, 'image/png');
+    fake.addVersion(cloudDocument(project.id, 'NOTES/c.md').id, '![](images/x.png)', { images: [{ path: 'NOTES/images/x.png', hash }] });
+    const result = await downloadProject(project, api());
+    expect(result).toMatchObject({ documents: 3, skipped: [] });
+    const folders = await listFolders(result.projectId);
+    // One folder, spelled as in the most recently saved document.
+    expect(folders.filter((f) => f.parentFolderId === null).map((f) => f.name)).toEqual(['NOTES']);
+    expect(await listImages(result.projectId)).toHaveLength(1);
+  });
+
+  it('keeps the most recently saved document when two share a path (final review I2)', async () => {
+    const project = cloudProject();
+    const old = { id: 'd-old', project_id: project.id, path: 'Plan.md', created_at: '2026-10-01T09:00:00.000Z', next_number: 1 };
+    fake.documents.set(old.id, old);
+    fake.addVersion(old.id, '# old plan');
+    const current = { id: 'd-new', project_id: project.id, path: 'Plan.md', created_at: '2026-10-02T09:00:00.000Z', next_number: 1 };
+    fake.documents.set(current.id, current);
+    fake.addVersion(current.id, '# current plan');
+    const result = await downloadProject(project, api());
+    expect(result.skipped).toEqual(['Plan.md (a document with this name is already there)']);
+    const [doc] = await listDocuments(result.projectId);
+    expect(doc).toMatchObject({ content: '# current plan', cloudDocumentId: 'd-new' });
+  });
 });
+

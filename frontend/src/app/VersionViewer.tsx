@@ -10,6 +10,8 @@ export interface VersionViewerProps {
   html: string;
   theme: Theme;
   proseStyle?: CSSProperties;
+  /** The working copy has changes no version holds: Restore asks first (final review I4). */
+  dirty: boolean;
   onRestore: () => Promise<void>;
   onDelete: () => Promise<void>;
   onClose: () => void;
@@ -17,8 +19,8 @@ export interface VersionViewerProps {
 }
 
 /** A saved version, read-only, in place of the editor and preview (P-081). */
-export function VersionViewer({ version, html, theme, proseStyle, onRestore, onDelete, onClose, onNotice }: VersionViewerProps) {
-  const [confirming, setConfirming] = useState(false);
+export function VersionViewer({ version, html, theme, proseStyle, dirty, onRestore, onDelete, onClose, onNotice }: VersionViewerProps) {
+  const [confirming, setConfirming] = useState<'delete' | 'restore' | null>(null);
   const [busy, setBusy] = useState(false);
 
   const restore = async () => {
@@ -41,10 +43,10 @@ export function VersionViewer({ version, html, theme, proseStyle, onRestore, onD
           </span>
         </div>
         <div className="ws-version-actions">
-          <Button variant="primary" onClick={() => void restore()} disabled={busy}>
+          <Button variant="primary" onClick={() => (dirty ? setConfirming('restore') : void restore())} disabled={busy}>
             Restore
           </Button>
-          <Button variant="danger" onClick={() => setConfirming(true)} disabled={busy}>
+          <Button variant="danger" onClick={() => setConfirming('delete')} disabled={busy}>
             Delete
           </Button>
           <Button onClick={onClose} disabled={busy}>
@@ -56,13 +58,22 @@ export function VersionViewer({ version, html, theme, proseStyle, onRestore, onD
         {/* No document links here: it is a past state, and the open document stays where it is. */}
         <Preview html={html} theme={theme} style={proseStyle} onOpenDocument={() => {}} onNotice={onNotice} />
       </div>
-      {confirming && (
+      {confirming === 'delete' && (
         <ConfirmDialog
           title="Delete version"
           message={`Delete version ${version.number}? This can’t be undone.`}
           confirmLabel="Delete version"
-          onClose={() => setConfirming(false)}
+          onClose={() => setConfirming(null)}
           onConfirm={onDelete}
+        />
+      )}
+      {confirming === 'restore' && (
+        <ConfirmDialog
+          title="Restore version"
+          message={`Restore version ${version.number}? Your changes since the last saved version will be replaced.`}
+          confirmLabel="Restore version"
+          onClose={() => setConfirming(null)}
+          onConfirm={restore}
         />
       )}
     </section>

@@ -17,7 +17,11 @@ export async function downloadProject(
   api: Api = getApi(),
 ): Promise<{ projectId: string; documents: number; skipped: string[] }> {
   const documents = await request(() => api.GET('/api/projects/{project_id}/documents', { params: { path: { project_id: cloud.id } } }));
-  const saved = documents.filter((doc) => doc.latest !== null);
+  // Newest save first: when two cloud documents share a path (one deleted or renamed locally
+  // without saving again), the one the user worked on last is the one they get.
+  const saved = documents
+    .filter((doc) => doc.latest !== null)
+    .sort((a, b) => Date.parse(b.latest!.created_at) - Date.parse(a.latest!.created_at));
   const fetched = new Map<string, Awaited<ReturnType<typeof fetchVersion>>>();
   await pool(saved, TRANSFERS, async (doc) => {
     fetched.set(doc.id, await fetchVersion(doc.latest!.id, api));
@@ -28,6 +32,15 @@ export async function downloadProject(
   /** Every claimed path (files and their folders), by key: 'file' or 'folder'; image hashes by key. */
   const claimed = new Map<string, 'file' | 'folder'>();
   const imageHashes = new Map<string, string>();
+
+  /** Folder key → the spelling first seen; `notes/` and `Notes/` are one folder here, as locally (P-008). */
+  const spelling = new Map<string, string>();
+  const canonical = (segments: string[]) =>
+    segments.map((segment, i) => {
+      const k = key(segments.slice(0, i + 1).join('/'));
+      if (!spelling.has(k)) spelling.set(k, segment);
+      return spelling.get(k)!;
+    });
 
   const folderChainFree = (segments: string[]) =>
     segments.every((_, i) => claimed.get(key(segments.slice(0, i + 1).join('/'))) !== 'file');
@@ -41,10 +54,11 @@ export async function downloadProject(
     }
   };
 
-  // Documents first, in the server's path order: the first one claiming a path wins.
+  // Documents first, newest save first: the first one claiming a path wins.
   for (const doc of saved) {
-    const segments = doc.path.split('/');
-    const title = segments.pop()!;
+    const raw = doc.path.split('/');
+    const title = raw.pop()!;
+    const segments = canonical(raw);
     if (claimed.has(key(doc.path)) || !folderChainFree(segments)) {
       skipped.push(`${doc.path} (a document with this name is already there)`);
       continue;
@@ -60,8 +74,9 @@ export async function downloadProject(
     for (const image of fetched.get(doc.id)!.images) {
       const k = key(image.path);
       if (imageHashes.get(k) === image.sha256) continue; // the same image, used by several documents
-      const segments = image.path.split('/');
-      const name = segments.pop()!;
+      const raw = image.path.split('/');
+      const name = raw.pop()!;
+      const segments = canonical(raw);
       if (claimed.has(k) || !folderChainFree(segments)) {
         skipped.push(`${image.path} (another file has this name)`);
         continue;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ApiError, type LatestOut } from '../api';
 import { useAuth } from '../auth';
+import { listPhrase } from '../lib/text';
 import { setHeadVersion, StoreError } from '../store';
 import { deleteVersion, loadVersion, saveAsCopy, saveVersion } from '../sync';
 import type { DocumentDraft } from './useDocumentDraft';
@@ -85,11 +86,17 @@ export function useVersionActions({ docId, draft, currentText, notify, openDocum
         }
         setLastNumber(result.version.number);
         changed();
+        if (result.skippedImages.length > 0) {
+          const one = result.skippedImages.length === 1;
+          notify(
+            `Saved version ${result.version.number} without ${listPhrase(result.skippedImages)}: the server couldn’t accept ${one ? 'that image' : 'those images'}.`,
+          );
+        }
       } catch (error) {
         report(error, 'save a version');
       }
     },
-    [docId, draft, currentText, changed, report],
+    [docId, draft, currentText, changed, notify, report],
   );
 
   const loadLatest = useCallback(async () => {

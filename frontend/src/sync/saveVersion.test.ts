@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ApiError, createApi } from '../api';
 import { sha256Hex } from '../lib/sha256';
-import { clearDatabase, getDocument, getProject, renameDocument, saveDocumentContent } from '../store';
+import { addImage, clearDatabase, getDocument, getProject, renameDocument, saveDocumentContent } from '../store';
 import { createFakeApi, type FakeApi } from '../test/fakeApi';
 import { saveVersion } from './saveVersion';
 import { makeProject, PNG_HASH, TEXT } from './testProject';
@@ -138,4 +138,22 @@ describe('saveVersion', () => {
     await expect(failure).rejects.toBeInstanceOf(ApiError);
     await expect(failure).rejects.toMatchObject({ code: 'offline' });
   });
+
+  it('saves without an image the server rejects and names it (final review I3)', async () => {
+    const svg = new TextEncoder().encode(
+      '<?xml version="1.0"?>\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">\n<svg xmlns="http://www.w3.org/2000/svg"/>',
+    );
+    const text = '![dot](images/a.png)\n\n![drawing](images/d.svg)\n';
+    const { doc, images, project } = await makeProject(text);
+    await addImage(project.id, images.id, { name: 'd.svg', type: 'image/svg+xml', bytes: svg.buffer as ArrayBuffer });
+    const result = await saveVersion(doc.id, text, null, api());
+    expect(result).toMatchObject({ kind: 'saved', skippedImages: ['notes/images/d.svg'] });
+    expect((posted(/\/versions$/)[0]!.body as { images: unknown[] }).images).toEqual([{ path: 'notes/images/a.png', hash: PNG_HASH }]);
+  });
+
+  it('reports no skipped images on a clean save', async () => {
+    const { doc } = await makeProject();
+    expect(await saveVersion(doc.id, TEXT, null, api())).toMatchObject({ kind: 'saved', skippedImages: [] });
+  });
 });
+

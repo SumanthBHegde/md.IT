@@ -24,12 +24,16 @@ export async function readVersion(versionId: string, api: Api = getApi()): Promi
   return { version, text: new TextDecoder().decode(await getBlob(api, version.content_hash)) };
 }
 
-/** Delete a version; if it was this copy's head, the head moves to the new latest (P-081). */
+/** Delete a version. If it was this copy's head, the head moves to the newest version *older*
+ * than it (or none), never to one saved since on another device: the next save must still meet
+ * that one as a conflict, not build on it unseen (P-088, final review I5). */
 export async function deleteVersion(docId: string, versionId: string, api: Api = getApi()): Promise<void> {
+  const before = await getDocument(docId);
+  if (!before) throw new NotFoundError('This document no longer exists.');
+  const versions = before.headVersionId === versionId ? await listVersions(docId, api) : null;
   await request(() => api.DELETE('/api/versions/{version_id}', { params: { path: { version_id: versionId } } }));
-  const doc = await getDocument(docId);
-  if (!doc) throw new NotFoundError('This document no longer exists.');
-  if (doc.headVersionId !== versionId) return;
-  const remaining = await listVersions(docId, api);
-  await setHeadVersion(docId, remaining?.[0]?.id, true);
+  if (versions === null) return;
+  const deleted = versions.find((version) => version.id === versionId);
+  const older = deleted ? versions.find((version) => version.number < deleted.number) : undefined;
+  await setHeadVersion(docId, older?.id, true);
 }

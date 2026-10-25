@@ -5,7 +5,14 @@ import { documentPath, imagePath, referencedImages } from './paths';
 import { pool, TRANSFERS } from './pool';
 
 export type SaveResult =
-  | { kind: 'saved'; version: VersionDetail; /** Still changed since: an edit landed while saving. */ dirty: boolean }
+  | {
+      kind: 'saved';
+      version: VersionDetail;
+      /** Still changed since: an edit landed while saving. */
+      dirty: boolean;
+      /** Image paths the server refused (415) and the version was saved without. */
+      skippedImages: string[];
+    }
   | { kind: 'conflict'; latest: LatestOut | null };
 
 /** A 404 from a cloud project or document link: it points at something this account can't see. */
@@ -53,8 +60,20 @@ async function attempt(docId: string, text: string, message: string | null, api:
   const content = new TextEncoder().encode(text);
   const contentHash = sha256Hex(content);
   await ensureBlob(api, contentHash, content.buffer as ArrayBuffer, 'text/markdown');
-  const images = referencedImages(snapshot, doc, text);
-  await pool(images, TRANSFERS, (image) => ensureBlob(api, image.sha256, image.bytes, image.contentType));
+  const referenced = referencedImages(snapshot, doc, text);
+  // An image the server won't take (e.g. an SVG with a DOCTYPE) must not block every save of
+  // the document: the version is saved without it, and the caller names it (final review I3).
+  const refused = new Set<string>();
+  await pool(referenced, TRANSFERS, async (image) => {
+    try {
+      await ensureBlob(api, image.sha256, image.bytes, image.contentType);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 415) refused.add(image.id);
+      else throw error;
+    }
+  });
+  const images = referenced.filter((image) => !refused.has(image.id));
+  const skippedImages = referenced.filter((image) => refused.has(image.id)).map((image) => imagePath(folders, image));
 
   let version: VersionDetail;
   try {
@@ -80,7 +99,7 @@ async function attempt(docId: string, text: string, message: string | null, api:
     throw error;
   }
   const { dirty } = await recordVersionSaved(doc.id, { cloudDocumentId, headVersionId: version.id, content: text });
-  return { kind: 'saved', version, dirty };
+  return { kind: 'saved', version, dirty, skippedImages };
 }
 
 /** Save `text` as the document's next version (spec 5b 6.2, P-078). The caller flushes the

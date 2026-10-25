@@ -97,6 +97,24 @@ describe('history', () => {
     expect(fake.versions.has(v2.id)).toBe(false);
   });
 
+  it('deleting the head never adopts a newer version saved elsewhere (final review I5)', async () => {
+    const { doc, v1, v2 } = await twoVersions(); // head v1 (saved here); v2 came from another browser
+    expect((await getDocument(doc.id))!.headVersionId).toBe(v1.id);
+    await deleteVersion(doc.id, v1.id, api());
+    expect((await getDocument(doc.id))!.headVersionId).toBeUndefined();
+    const next = await saveVersion(doc.id, TEXT, null, api());
+    expect(next).toMatchObject({ kind: 'conflict', latest: { id: v2.id, number: 2 } });
+  });
+
+  it('deleting the head moves it to the next older version', async () => {
+    const { doc, v1, v2 } = await twoVersions();
+    await loadVersion(doc.id, v2.id, { asLatest: true }, api());
+    const v3 = fake.addVersion((await getDocument(doc.id))!.cloudDocumentId!, '# v3 elsewhere');
+    await deleteVersion(doc.id, v2.id, api());
+    expect((await getDocument(doc.id))!.headVersionId).toBe(v1.id);
+    expect(await saveVersion(doc.id, TEXT, null, api())).toMatchObject({ kind: 'conflict', latest: { id: v3.id } });
+  });
+
   it('deleting the only version leaves no head', async () => {
     const { doc, v1 } = await makeProject().then(async (setup) => {
       const saved = await saveVersion(setup.doc.id, TEXT, null, api());

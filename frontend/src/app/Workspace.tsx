@@ -285,6 +285,7 @@ export function Workspace() {
                   html={viewerHtml}
                   theme={theme}
                   proseStyle={proseStyle}
+                  dirty={docRow?.dirty !== false}
                   onNotice={showNotice}
                   onClose={closeViewer}
                   onRestore={async () => {
