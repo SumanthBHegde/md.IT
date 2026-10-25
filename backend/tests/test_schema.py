@@ -33,9 +33,9 @@ NO_REFERENCED_ROW = 1452
 
 
 @pytest.fixture
-def session(migrated: Engine) -> Iterator[Session]:
-    """Everything the test writes is rolled back afterwards."""
-    connection = migrated.connect()
+def session(clean_db: Engine) -> Iterator[Session]:
+    """Starts from empty tables; everything the test writes is rolled back afterwards."""
+    connection = clean_db.connect()
     transaction = connection.begin()
     session = Session(bind=connection, join_transaction_mode="create_savepoint")
     yield session
