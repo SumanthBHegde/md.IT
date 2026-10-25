@@ -8,7 +8,6 @@ from defusedxml import ElementTree as SafeXml
 from fastapi import Request
 from sqlalchemy import select
 from sqlalchemy.dialects.mysql import insert
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.models import Blob, User, UserBlob
@@ -92,51 +91,36 @@ async def read_limited(request: Request, limit: int = MAX_BLOB_BYTES) -> bytes:
     return b"".join(chunks)
 
 
-def owned_blob(db: Session, user: User, hash: str) -> Blob | None:
+def owned_blob(db: Session, user: User, hash: str) -> UserBlob | None:
+    """The caller's ownership of `hash`, with the type they stored it as (P-074)."""
     return db.scalars(
-        select(Blob)
-        .join(UserBlob, UserBlob.hash == Blob.hash)
-        .where(UserBlob.user_id == user.id, Blob.hash == hash)
+        select(UserBlob).where(UserBlob.user_id == user.id, UserBlob.hash == hash)
     ).one_or_none()
 
 
-def _owns(db: Session, user: User, hash: str) -> bool:
-    return (
-        db.scalar(select(UserBlob.hash).where(UserBlob.user_id == user.id, UserBlob.hash == hash))
-        is not None
-    )
-
-
-def _insert_owner(db: Session, user: User, hash: str) -> None:
-    statement = insert(UserBlob).values(user_id=user.id, hash=hash)
-    db.execute(statement.on_duplicate_key_update(user_id=statement.inserted.user_id))
-
-
-def _store_once(
-    db: Session, store: BlobStore, user: User, hash: str, content_type: str, data: bytes
-) -> bool:
-    if db.scalar(select(Blob.hash).where(Blob.hash == hash)) is None:
-        # Bytes before the row, so a row never points at a missing object (spec 7.1).
-        store.put(hash, data, content_type)
-        statement = insert(Blob).values(hash=hash, size=len(data), content_type=content_type)
-        db.execute(statement.on_duplicate_key_update(hash=statement.inserted.hash))
-    new = not _owns(db, user, hash)
-    if new:
-        _insert_owner(db, user, hash)
-    db.commit()
-    return new
+def _insert_owner(db: Session, user: User, hash: str, content_type: str) -> None:
+    statement = insert(UserBlob).values(user_id=user.id, hash=hash, content_type=content_type)
+    db.execute(statement.on_duplicate_key_update(content_type=statement.inserted.content_type))
 
 
 def store_blob(
     db: Session, store: BlobStore, user: User, hash: str, content_type: str, data: bytes
 ) -> bool:
-    """Verify and store the bytes for `user`; True when the user didn't own them before."""
+    """Verify and store the bytes for `user`; True when the user didn't own them before.
+
+    The blob row is locked first (inserted if missing): an account-delete sweep holds the same
+    lock, so the two never interleave (P-073). The row only becomes visible at commit, after
+    the bytes are stored, so a committed row never points at a missing object; and a lost
+    object (a sweep whose commit failed) is stored again by the next upload.
+    """
     if hashlib.sha256(data).hexdigest() != hash:
         raise ApiError(422, "hash_mismatch", "The content doesn't match its hash.")
     check_content(content_type, data)
-    try:
-        return _store_once(db, store, user, hash, content_type, data)
-    except IntegrityError:
-        # An account-delete sweep removed the blob row meanwhile (spec 7.4); store it afresh.
-        db.rollback()
-        return _store_once(db, store, user, hash, content_type, data)
+    statement = insert(Blob).values(hash=hash, size=len(data), content_type=content_type)
+    db.execute(statement.on_duplicate_key_update(hash=statement.inserted.hash))
+    if not store.exists(hash):
+        store.put(hash, data, content_type)
+    new = owned_blob(db, user, hash) is None
+    _insert_owner(db, user, hash, content_type)
+    db.commit()
+    return new

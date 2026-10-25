@@ -59,6 +59,7 @@ def upgrade() -> None:
         "user_blobs",
         sa.Column("user_id", sa.BigInteger(), nullable=False),
         sa.Column("hash", mysql.CHAR(length=64), nullable=False),
+        sa.Column("content_type", sa.String(length=100), nullable=False),
         created_at(),
         sa.ForeignKeyConstraint(
             ["hash"], ["blobs.hash"], name=op.f("fk_user_blobs_hash_blobs"), ondelete="RESTRICT"

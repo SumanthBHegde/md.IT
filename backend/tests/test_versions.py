@@ -324,3 +324,20 @@ def test_versions_of_other_users_are_404(
     assert other_client.get(f"/api/versions/{v1}").status_code == 404
     assert other_client.delete(f"/api/versions/{v1}").status_code == 404
     assert client.get(f"/api/versions/{v1}").status_code == 200
+
+
+def test_markdown_check_uses_the_savers_own_type(
+    client: TestClient, other_client: TestClient, clean_db: Engine
+) -> None:
+    # Final review, Important 2: bytes another user stored as an image are still Markdown for
+    # the user who uploaded them as Markdown.
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"/>'
+    sign_in(other_client, clean_db, "bob")
+    upload(other_client, svg, "image/svg+xml")
+    doc = make_doc(client, clean_db, "alice")
+    content = upload(client, svg, "text/markdown")
+    response = client.post(
+        f"/api/documents/{doc.id}/versions",
+        json={"parent_version_id": None, "content_hash": content, "path": "Notes.md"},
+    )
+    assert response.status_code == 201, response.text

@@ -53,8 +53,9 @@ def upsert_user(db: Session, identity: Identity) -> User:
 def sweep_blob(db: Session, store: BlobStore, hash: str) -> bool:
     """Remove a blob nobody owns any more; True when it was removed.
 
-    The row is locked first, so a concurrent upload of the same bytes waits, then fails its
-    ownership foreign key and stores the object afresh (spec 6.5 step 6).
+    The row is locked first. An upload of the same bytes takes the same row lock (P-073), so
+    it either finishes first (and its ownership keeps the blob) or waits and stores the bytes
+    afresh after this commit.
     """
     try:
         if db.scalar(select(Blob.hash).where(Blob.hash == hash).with_for_update()) is None:

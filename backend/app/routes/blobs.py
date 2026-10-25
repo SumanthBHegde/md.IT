@@ -106,11 +106,12 @@ async def upload_blob(hash: str, request: Request, user: CurrentUser, db: DbSess
     },
 )
 def get_blob(hash: str, request: Request, user: CurrentUser, db: DbSession) -> Response:
-    blob = owned_blob(db, user, _checked(hash))
-    if blob is None:
+    owned = owned_blob(db, user, _checked(hash))
+    if owned is None:
         raise _not_found()
-    data = _store(request).get(blob.hash)
+    data = _store(request).get(owned.hash)
     if data is None:
-        log.error("Blob %s has a row but no stored object", blob.hash)
+        log.error("Blob %s has a row but no stored object", owned.hash)
         raise ApiError(500, "internal_error", "Something went wrong.")
-    return Response(data, media_type=blob.content_type, headers=DOWNLOAD_HEADERS)
+    # The type this user stored it as, not the first uploader's (P-074).
+    return Response(data, media_type=owned.content_type, headers=DOWNLOAD_HEADERS)

@@ -241,7 +241,7 @@ def test_deleting_user_cascades_sessions_and_ownership(session: Session) -> None
     make_document(session)
     user = session.scalars(select(User)).one()
     make_session_row(session, user)
-    session.add(UserBlob(user_id=user.id, hash=HASH_A))
+    session.add(UserBlob(user_id=user.id, hash=HASH_A, content_type="text/markdown"))
     session.flush()
     session.execute(delete(User).where(User.id == user.id))
     assert session.scalar(select(func.count()).select_from(LoginSession)) == 0
@@ -252,7 +252,7 @@ def test_deleting_user_cascades_sessions_and_ownership(session: Session) -> None
 def test_blob_with_owner_cannot_be_deleted(session: Session) -> None:
     make_document(session)
     user = session.scalars(select(User)).one()
-    session.add(UserBlob(user_id=user.id, hash=HASH_A))
+    session.add(UserBlob(user_id=user.id, hash=HASH_A, content_type="text/markdown"))
     session.flush()
     with pytest.raises(DBAPIError) as info:
         session.execute(delete(Blob).where(Blob.hash == HASH_A))

@@ -1,17 +1,17 @@
 """Blob routes: verified uploads, per-user ownership, sandboxed downloads (P-061, P-065)."""
 
 import hashlib
+import threading
 
 import httpx2
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Blob, User, UserBlob
-from app.services import blobs as blob_service
-from app.services.blobs import MAX_BLOB_BYTES
+from app.services.accounts import Identity, delete_account, upsert_user
+from app.services.blobs import MAX_BLOB_BYTES, store_blob
 from app.storage.blobs import BlobStore
 from tests.support import sign_in
 
@@ -19,6 +19,8 @@ pytestmark = pytest.mark.integration
 
 MD = "# Notes\n\nShared text ✓\n".encode()
 PNG = b"\x89PNG\r\n\x1a\n" + bytes(16)
+# Valid UTF-8 and valid SVG: passes both the Markdown and the SVG check.
+SVG = b'<svg xmlns="http://www.w3.org/2000/svg"/>'
 
 
 def sha(data: bytes) -> str:
@@ -144,44 +146,75 @@ def test_invalid_hash_is_404(client: TestClient, clean_db: Engine, bad: str) -> 
     assert client.get(f"/api/blobs/{bad}").status_code == 404
 
 
-def test_upload_retries_after_a_swept_row(
-    client: TestClient,
-    other_client: TestClient,
-    clean_db: Engine,
-    blob_store: BlobStore,
-    monkeypatch: pytest.MonkeyPatch,
+def test_lost_object_is_restored_by_the_next_upload(
+    client: TestClient, clean_db: Engine, blob_store: BlobStore
 ) -> None:
-    # bob stored the blob; while alice uploads the same bytes, an account-delete sweep removes
-    # bob's ownership, the row and the object. Alice's ownership insert then fails its foreign
-    # key once; the upload must run again and store the object afresh.
-    sign_in(client, clean_db, "alice")
-    sign_in(other_client, clean_db, "bob")
-    put(other_client, MD)
-    real_insert = blob_service._insert_owner
-    calls = []
-
-    def swept_first(db: Session, user: User, hash: str) -> None:
-        calls.append(hash)
-        if len(calls) == 1:
-            with Session(clean_db) as other:
-                other.execute(delete(UserBlob).where(UserBlob.hash == hash))
-                other.execute(delete(Blob).where(Blob.hash == hash))
-                other.commit()
-            blob_store.delete(hash)
-        real_insert(db, user, hash)
-
-    monkeypatch.setattr(blob_service, "_insert_owner", swept_first)
-    assert put(client, MD).status_code == 201
-    assert len(calls) == 2
-    assert blob_store.get(sha(MD)) == MD
+    sign_in(client, clean_db)
+    put(client, MD)
+    blob_store.delete(sha(MD))  # e.g. a sweep's commit failed after deleting the object
+    assert put(client, MD).status_code == 200
     assert client.get(f"/api/blobs/{sha(MD)}").content == MD
 
 
-def test_integrity_error_is_what_the_sweep_race_raises(clean_db: Engine) -> None:
-    # The retry above depends on the FK failure surfacing as IntegrityError.
+def test_upload_racing_a_sweep_keeps_the_object(
+    clean_db: Engine, blob_store: BlobStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Final review, Important 1: alice's request has a snapshot from before bob stored H; bob
+    # deletes his account while alice's upload runs. Alice's blob must still have its bytes.
+    with Session(clean_db, expire_on_commit=False) as db:
+        alice = upsert_user(db, Identity("dev", "alice", None))
+        bob = upsert_user(db, Identity("dev", "bob", None))
+
+    def delete_bob() -> None:
+        with Session(clean_db) as db:
+            user = db.get(User, bob.id)
+            assert user is not None
+            delete_account(db, blob_store, user)
+
+    sweeper = threading.Thread(target=delete_bob)
+    real_put, real_exists = BlobStore.put, BlobStore.exists
+
+    def sweep_now() -> None:
+        if sweeper.ident is None:
+            sweeper.start()
+            sweeper.join(timeout=1.5)  # finishes, or waits on alice's row lock
+
+    def put_then_sweep(self: BlobStore, hash: str, data: bytes, content_type: str) -> None:
+        real_put(self, hash, data, content_type)
+        sweep_now()
+
+    def exists_then_sweep(self: BlobStore, hash: str) -> bool:
+        found = real_exists(self, hash)
+        sweep_now()
+        return found
+
+    with Session(clean_db) as alice_db:
+        alice_user = alice_db.get(User, alice.id)  # fixes alice's snapshot, like the auth lookup
+        assert alice_user is not None
+        with Session(clean_db) as bob_db:
+            bob_user = bob_db.get(User, bob.id)
+            assert bob_user is not None
+            store_blob(bob_db, blob_store, bob_user, sha(MD), "text/markdown", MD)
+        monkeypatch.setattr(BlobStore, "put", put_then_sweep)
+        monkeypatch.setattr(BlobStore, "exists", exists_then_sweep)
+        assert store_blob(alice_db, blob_store, alice_user, sha(MD), "text/markdown", MD)
+    sweeper.join(timeout=30)
+    monkeypatch.undo()
+    assert blob_store.get(sha(MD)) == MD
     with Session(clean_db) as db:
-        db.add(User(provider="dev", provider_user_id="x"))
-        db.commit()
-        user = db.scalars(select(User)).one()
-        with pytest.raises(IntegrityError):
-            blob_service._insert_owner(db, user, "f" * 64)
+        assert db.get(Blob, sha(MD)) is not None
+
+
+def test_content_type_is_per_owner(
+    client: TestClient, other_client: TestClient, clean_db: Engine
+) -> None:
+    # Final review, Important 2: the first uploader must not decide the type others get.
+    sign_in(client, clean_db, "alice")
+    sign_in(other_client, clean_db, "bob")
+    assert put(client, SVG, "text/markdown").status_code == 201
+    response = put(other_client, SVG, "image/svg+xml")
+    assert response.status_code == 201
+    assert response.json()["content_type"] == "image/svg+xml"
+    assert other_client.get(f"/api/blobs/{sha(SVG)}").headers["content-type"] == "image/svg+xml"
+    alice_type = client.get(f"/api/blobs/{sha(SVG)}").headers["content-type"]
+    assert alice_type.startswith("text/markdown")

@@ -137,6 +137,8 @@ class UserBlob(Base):
     hash: Mapped[str] = mapped_column(
         CHAR(64), ForeignKey("blobs.hash", ondelete="RESTRICT"), primary_key=True, index=True
     )
+    # Per owner: the same bytes can be one user's Markdown and another's SVG (P-074).
+    content_type: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), server_default=text("CURRENT_TIMESTAMP(6)")
     )

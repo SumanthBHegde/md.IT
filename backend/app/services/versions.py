@@ -8,7 +8,7 @@ a version committed while this save waited for the lock (planning probe, P-068).
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, aliased
 
-from app.db.models import Blob, Document, Project, User, UserBlob, Version, VersionImage
+from app.db.models import Document, Project, User, UserBlob, Version, VersionImage
 from app.errors import ApiError
 from app.schemas.versions import ImageRef, VersionDetail, VersionIn, VersionSummary
 from app.services.blobs import MARKDOWN
@@ -73,7 +73,12 @@ def save_version(db: Session, user: User, document_id: str, body: VersionIn) -> 
     missing = sorted(hashes - owned)
     if missing:
         raise ApiError(422, "blob_missing", "Upload these blobs first.", {"missing": missing})
-    content_type = db.scalar(select(Blob.content_type).where(Blob.hash == body.content_hash))
+    # The type this user stored the content as (P-074).
+    content_type = db.scalar(
+        select(UserBlob.content_type).where(
+            UserBlob.user_id == user.id, UserBlob.hash == body.content_hash
+        )
+    )
     if content_type != MARKDOWN:
         raise ApiError(
             422,
