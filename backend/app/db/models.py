@@ -27,7 +27,7 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("provider", "provider_user_id"),
-        CheckConstraint("provider IN ('github', 'google')", name="provider"),
+        CheckConstraint("provider IN ('github', 'google', 'dev')", name="provider"),
         TABLE_ARGS,
     )
 
@@ -65,6 +65,8 @@ class Document(Base):
     )
     # Not unique: a rename on another device must not fail a save.
     path: Mapped[str] = mapped_column(String(1024))
+    # The next version's number; never decremented, so numbers aren't reused (P-062).
+    next_number: Mapped[int] = mapped_column(Integer, server_default=text("1"))
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), server_default=text("CURRENT_TIMESTAMP(6)")
     )
@@ -105,3 +107,54 @@ class Version(Base):
     created_at: Mapped[datetime] = mapped_column(
         DATETIME(fsp=6), server_default=text("CURRENT_TIMESTAMP(6)")
     )
+
+
+class LoginSession(Base):
+    """A signed-in browser (P-059). Named so it can't be confused with SQLAlchemy's Session."""
+
+    __tablename__ = "sessions"
+    __table_args__ = (TABLE_ARGS,)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    # SHA-256 of the cookie token; the token itself is never stored.
+    token_hash: Mapped[str] = mapped_column(CHAR(64), unique=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+    expires_at: Mapped[datetime] = mapped_column(DATETIME(fsp=6))
+
+
+class UserBlob(Base):
+    """Which user may see which blob (P-061); blobs themselves are shared and deduplicated."""
+
+    __tablename__ = "user_blobs"
+    __table_args__ = (TABLE_ARGS,)
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    hash: Mapped[str] = mapped_column(
+        CHAR(64), ForeignKey("blobs.hash", ondelete="RESTRICT"), primary_key=True, index=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DATETIME(fsp=6), server_default=text("CURRENT_TIMESTAMP(6)")
+    )
+
+
+class VersionImage(Base):
+    """An image a version's document uses, at its project-relative path (P-060).
+
+    No unique key on (version_id, path): 1024 utf8mb4 characters exceed InnoDB's index limit,
+    so the API rejects duplicate paths instead.
+    """
+
+    __tablename__ = "version_images"
+    __table_args__ = (TABLE_ARGS,)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    version_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("versions.id", ondelete="CASCADE")
+    )
+    path: Mapped[str] = mapped_column(String(1024))
+    hash: Mapped[str] = mapped_column(CHAR(64), ForeignKey("blobs.hash", ondelete="RESTRICT"))

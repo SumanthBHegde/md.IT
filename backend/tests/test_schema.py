@@ -9,7 +9,16 @@ from sqlalchemy import Engine, delete, func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
-from app.db.models import Blob, Document, Project, User, Version
+from app.db.models import (
+    Blob,
+    Document,
+    LoginSession,
+    Project,
+    User,
+    UserBlob,
+    Version,
+    VersionImage,
+)
 
 pytestmark = pytest.mark.integration
 
@@ -193,3 +202,85 @@ def test_deleting_a_user_removes_their_projects_documents_and_versions(session: 
     assert count(Document, Document.id == document_id) == 0
     assert count(Version, Version.document_id == document_id) == 0
     assert count(Blob, Blob.hash == HASH_A) == 1  # blobs are shared; cleanup is separate
+
+
+def make_session_row(session: Session, user: User, token_hash: str = HASH_B) -> LoginSession:
+    row = LoginSession(
+        user_id=user.id,
+        token_hash=token_hash,
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=30),
+    )
+    session.add(row)
+    session.flush()
+    return row
+
+
+def test_dev_provider_allowed(session: Session) -> None:
+    session.add(User(provider="dev", provider_user_id="alice"))
+    session.flush()
+
+
+def test_unknown_provider_rejected(session: Session) -> None:
+    session.add(User(provider="gitlab", provider_user_id="1"))
+    with pytest.raises(DBAPIError) as info:
+        session.flush()
+    assert mysql_error(info) == CHECK_FAILED
+
+
+def test_session_token_hash_unique(session: Session) -> None:
+    user = User(provider="dev", provider_user_id="alice")
+    session.add(user)
+    session.flush()
+    make_session_row(session, user)
+    with pytest.raises(DBAPIError) as info:
+        make_session_row(session, user)
+    assert mysql_error(info) == DUPLICATE_KEY
+
+
+def test_deleting_user_cascades_sessions_and_ownership(session: Session) -> None:
+    make_document(session)
+    user = session.scalars(select(User)).one()
+    make_session_row(session, user)
+    session.add(UserBlob(user_id=user.id, hash=HASH_A))
+    session.flush()
+    session.execute(delete(User).where(User.id == user.id))
+    assert session.scalar(select(func.count()).select_from(LoginSession)) == 0
+    assert session.scalar(select(func.count()).select_from(UserBlob)) == 0
+    assert session.get(Blob, HASH_A) is not None  # blobs never cascade
+
+
+def test_blob_with_owner_cannot_be_deleted(session: Session) -> None:
+    make_document(session)
+    user = session.scalars(select(User)).one()
+    session.add(UserBlob(user_id=user.id, hash=HASH_A))
+    session.flush()
+    with pytest.raises(DBAPIError) as info:
+        session.execute(delete(Blob).where(Blob.hash == HASH_A))
+    assert mysql_error(info) == ROW_IS_REFERENCED
+
+
+def test_blob_used_by_version_image_cannot_be_deleted(session: Session) -> None:
+    document = make_document(session)
+    version = add_version(session, document, 1)
+    session.add(Blob(hash=HASH_B, size=8, content_type="image/png"))
+    session.flush()
+    session.add(VersionImage(version_id=version.id, path="images/a.png", hash=HASH_B))
+    session.flush()
+    with pytest.raises(DBAPIError) as info:
+        session.execute(delete(Blob).where(Blob.hash == HASH_B))
+    assert mysql_error(info) == ROW_IS_REFERENCED
+
+
+def test_deleting_version_cascades_its_images(session: Session) -> None:
+    document = make_document(session)
+    version = add_version(session, document, 1)
+    session.add(VersionImage(version_id=version.id, path="images/a.png", hash=HASH_A))
+    session.flush()
+    session.execute(delete(Version).where(Version.id == version.id))
+    assert session.scalar(select(func.count()).select_from(VersionImage)) == 0
+
+
+def test_next_number_defaults_to_1(session: Session) -> None:
+    document = make_document(session)
+    session.refresh(document)
+    assert document.next_number == 1
