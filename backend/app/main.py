@@ -16,6 +16,7 @@ from app.errors import install_error_handlers
 from app.logging import configure_logging
 from app.readiness import ReadinessChecks, build_readiness, readiness_engine
 from app.routes import auth, health, me
+from app.routes import blobs as blob_routes
 from app.services.oauth import IdentityProvider, build_providers
 from app.storage.blobs import BlobStore
 
@@ -79,4 +80,5 @@ def create_app(
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(me.router)
+    app.include_router(blob_routes.router)
     return app

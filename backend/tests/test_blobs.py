@@ -9,7 +9,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from azure.storage.blob import ContainerClient
 
 from app.config import Settings
-from app.storage.blobs import BlobStore
+from app.storage.blobs import BlobStore, is_blob_hash
 from tests.support import azurite_connection_string
 
 
@@ -75,3 +75,23 @@ def test_existing_blob_is_not_replaced(blob_store: BlobStore) -> None:
     blob_store.put(digest, b"first", "text/plain")
     blob_store.put(digest, b"second", "text/plain")
     assert blob_store.get(digest) == b"first"
+
+
+@pytest.mark.integration
+def test_delete_removes_a_blob(blob_store: BlobStore) -> None:
+    name = uuid.uuid4().hex * 2
+    blob_store.put(name, b"bytes", "text/markdown")
+    blob_store.delete(name)
+    assert blob_store.get(name) is None
+
+
+@pytest.mark.integration
+def test_delete_missing_is_fine(blob_store: BlobStore) -> None:
+    blob_store.delete(uuid.uuid4().hex * 2)
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"), [("a" * 64, True), ("A" * 64, False), ("a" * 63, False), ("g" * 64, False)]
+)
+def test_is_blob_hash(value: str, ok: bool) -> None:
+    assert is_blob_hash(value) is ok
