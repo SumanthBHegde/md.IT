@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
+import { useAuth } from '../auth';
 import type { EditorHandle } from '../editor';
 import { exportDocument, exportProject } from '../export';
 import { analyze, render } from '../renderer';
 import { SEARCH_INPUT_ID, SearchBox, SearchResults, type SearchMatch } from '../search';
 import { toCssVars, useRenderingSettings } from '../settings';
-import { IMAGE_ACCEPT, SETTINGS, useProject, useSettingState, type ImageAsset } from '../store';
+import { IMAGE_ACCEPT, SETTINGS, useDocuments, useProject, useSettingState, type ImageAsset } from '../store';
 import { FileTree } from '../tree';
-import { IconButton, SaveStatus, SegmentedControl, Wordmark, type SegmentedOption } from '../ui';
+import { Button, IconButton, SaveStatus, SegmentedControl, Wordmark, type SegmentedOption } from '../ui';
+import { AccountMenu } from './AccountMenu';
+import { ConflictDialog } from './ConflictDialog';
 import { DocumentArea } from './DocumentArea';
 import { ExportMenu, type ExportKind } from './ExportMenu';
 import { addImagesNextTo, imageMarkdown } from './imageInsert';
@@ -15,9 +18,11 @@ import { MissingPage } from './MissingPage';
 import { Notice, type NoticeMessage } from './Notice';
 import { SidePanel, type PanelTab } from './SidePanel';
 import { useResolvedTheme } from './theme';
+import { SaveVersionDialog } from './SaveVersionDialog';
 import { ThemeMenu } from './ThemeMenu';
 import { useDocumentDraft } from './useDocumentDraft';
 import { useProjectFiles } from './useProjectFiles';
+import { useVersionActions } from './useVersionActions';
 
 export type ViewMode = 'split' | 'editor' | 'preview';
 
@@ -54,13 +59,21 @@ export function Workspace() {
   const searching = query.trim() !== '';
   const [revealId, setRevealId] = useState<string | null>(null);
   const [pendingSelect, setPendingSelect] = useState<({ docId: string } & SearchMatch) | null>(null);
+  const auth = useAuth();
+  const docRow = useDocuments(projectId)?.find((d) => d.id === docId);
+  const canSaveVersion = auth.state === 'signed-in' && docReady;
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
 
-  // Ctrl/Cmd+S saves now (never the browser's "Save page"); Ctrl/Cmd+Shift+F focuses project search.
+  // Ctrl/Cmd+S saves now (never the browser's "Save page"); Ctrl/Cmd+Shift+S saves a version;
+  // Ctrl/Cmd+Shift+F focuses project search.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       const key = event.key.toLowerCase();
-      if (key === 's') {
+      if (key === 's' && event.shiftKey) {
+        event.preventDefault();
+        if (canSaveVersion) setSaveDialogOpen(true);
+      } else if (key === 's') {
         event.preventDefault();
         saveNow();
       } else if (key === 'f' && event.shiftKey) {
@@ -70,13 +83,16 @@ export function Workspace() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [saveNow]);
+  }, [saveNow, canSaveVersion]);
 
   const openDocument = useCallback((id: string) => navigate(`/p/${projectId}/d/${id}`), [navigate, projectId]);
   const closeDocument = useCallback(() => navigate(`/p/${projectId}`, { replace: true }), [navigate, projectId]);
   const [notice, setNotice] = useState<NoticeMessage | null>(null);
   const showNotice = useCallback((text: string) => setNotice({ id: Date.now() + Math.random(), text }), []);
   const dismissNotice = useCallback(() => setNotice(null), []);
+  const currentText = useCallback(() => editorRef.current?.getText() ?? draft.previewSource, [draft.previewSource]);
+  const versions = useVersionActions({ docId, draft, currentText, notify: showNotice, openDocument });
+  const versionSaved = draft.saveState === 'saved' && docRow !== undefined && !docRow.dirty && docRow.headVersionId !== undefined;
 
   const insertFiles = useCallback(
     async (list: File[], at: number | null) => {
@@ -183,9 +199,21 @@ export function Workspace() {
             }}
           />
           <ExportMenu canExportDocument={docReady} onExport={(kind) => void runExport(kind)} />
-          {draft.status === 'ready' && (
-            <SaveStatus state={draft.saveState} detail={draft.saveState === 'failed' ? 'your last changes are only in this tab' : undefined} />
+          {draft.status === 'ready' &&
+            (versionSaved ? (
+              <SaveStatus state="cloud" detail={versions.lastNumber !== null ? `v${versions.lastNumber}` : undefined} />
+            ) : (
+              <SaveStatus state={draft.saveState} detail={draft.saveState === 'failed' ? 'your last changes are only in this tab' : undefined} />
+            ))}
+          {canSaveVersion && (
+            <Button icon="cloud" onClick={() => setSaveDialogOpen(true)}>
+              Save version
+            </Button>
           )}
+          <AccountMenu
+            onBeforeLeave={draft.flush}
+            onAccountDeleted={() => showNotice('Your account was deleted. Your projects are still in this browser.')}
+          />
           <IconButton icon="sidebar" label={panelOpen ? 'Hide panel' : 'Show panel'} active={panelOpen} onClick={() => setPanelOpen(!panelOpen)} />
           <ThemeMenu />
         </div>
@@ -233,6 +261,15 @@ export function Workspace() {
           />
         )}
       </div>
+      {saveDialogOpen && <SaveVersionDialog onSave={versions.save} onClose={() => setSaveDialogOpen(false)} />}
+      {versions.conflict && (
+        <ConflictDialog
+          latestNumber={versions.conflict.latest.number}
+          onLoadLatest={versions.loadLatest}
+          onSaveCopy={versions.saveCopy}
+          onClose={versions.dismissConflict}
+        />
+      )}
     </div>
   );
 }

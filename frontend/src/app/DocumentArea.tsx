@@ -41,7 +41,8 @@ export function DocumentArea({ docId, draft, html, theme, proseStyle, editorRef,
       <section className="ws-editor" aria-label="Editor">
         <Editor
           ref={editorRef}
-          key={docId}
+          // A restore or load rewrites the stored text; the new revision remounts the editor with it.
+          key={`${docId}:${draft.revision}`}
           initialContent={draft.initialContent}
           onChange={draft.onChange}
           onSave={draft.saveNow}

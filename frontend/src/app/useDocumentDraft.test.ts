@@ -190,4 +190,51 @@ describe('useDocumentDraft', () => {
     window.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
   });
+
+  it('flush resolves after the pending edit is written', async () => {
+    let finish!: () => void;
+    saveMock.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    const { result } = renderHook(() => useDocumentDraft('a'));
+    await advance(0);
+    act(() => result.current.onChange('typed'));
+    let done = false;
+    const flushing = result.current.flush().then(() => (done = true));
+    await advance(0);
+    expect(saveMock).toHaveBeenCalledWith('a', 'typed');
+    expect(done).toBe(false);
+    finish();
+    await act(() => flushing);
+    expect(done).toBe(true);
+  });
+
+  it('flush resolves at once when nothing is pending', async () => {
+    const { result } = renderHook(() => useDocumentDraft('a'));
+    await advance(0);
+    await act(() => result.current.flush());
+    expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it('flush rejects when the write fails', async () => {
+    saveMock.mockRejectedValue(new Error('disk full'));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { result } = renderHook(() => useDocumentDraft('a'));
+    await advance(0);
+    act(() => result.current.onChange('typed'));
+    await expect(act(() => result.current.flush())).rejects.toThrow();
+  });
+
+  it('reload re-reads content and bumps revision', async () => {
+    const { result } = renderHook(() => useDocumentDraft('a'));
+    await advance(0);
+    expect(result.current.revision).toBe(0);
+    getDocumentMock.mockImplementation(async (id) => ({ ...fakeDoc(id), content: 'restored' }));
+    act(() => result.current.reload());
+    // Loading at once: the editor must not remount under the new revision with the old text.
+    expect(result.current.status).toBe('loading');
+    await advance(0);
+    expect(result.current.status).toBe('ready');
+    expect(result.current.initialContent).toBe('restored');
+    expect(result.current.previewSource).toBe('restored');
+    expect(result.current.revision).toBe(1);
+  });
 });

@@ -8,6 +8,7 @@ import {
   createProject, deleteProject, renameProject, setProjectDescription, useProjectSummaries, userMessage, type ProjectSummary,
 } from '../store';
 import { Button, Callout, EmptyState, IconButton, MenuButton, Wordmark } from '../ui';
+import { AccountMenu } from './AccountMenu';
 import { ImportDialog } from './ImportDialog';
 import { StorageWarning } from './StorageWarning';
 import { ThemeMenu } from './ThemeMenu';
@@ -46,6 +47,7 @@ export function ProjectList() {
       <header className="app-toolbar">
         <Wordmark />
         <span className="app-toolbar-spacer" />
+        <AccountMenu />
         <ThemeMenu />
       </header>
       <main className="projects">

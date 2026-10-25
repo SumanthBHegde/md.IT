@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent, type Ref } from 'react';
 import { createPortal } from 'react-dom';
+import { Button } from './Button';
 import { IconButton } from './IconButton';
 import type { IconName } from './icons';
 import { Menu, type MenuItem } from './Menu';
@@ -11,12 +12,15 @@ export interface MenuButtonProps {
   label: string;
   icon?: IconName;
   size?: 'sm' | 'md';
+  /** App extension (P-013): a text button (e.g. "Sign in") instead of an icon button; `icon` then leads the text. */
+  text?: string;
 }
 
-/** An IconButton that opens a Menu in a fixed-position popover (never clipped by scrolling panels). */
-export function MenuButton({ items, label, icon = 'more', size }: MenuButtonProps) {
+/** An IconButton (or a text Button) that opens a Menu in a fixed-position popover (never clipped by scrolling panels). */
+export function MenuButton({ items, label, icon = 'more', size, text }: MenuButtonProps) {
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
-  const buttonRef = useRef<HTMLButtonElement>(null);
+  /** The trigger: the IconButton itself, or the span around a text Button (Button doesn't forward refs). */
+  const buttonRef = useRef<HTMLElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setPosition(null), []);
 
@@ -31,7 +35,7 @@ export function MenuButton({ items, label, icon = 'more', size }: MenuButtonProp
       if (event.key !== 'Escape') return;
       event.stopPropagation();
       close();
-      buttonRef.current?.focus();
+      (buttonRef.current?.querySelector('button') ?? buttonRef.current)?.focus();
     };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown, true);
@@ -66,15 +70,23 @@ export function MenuButton({ items, label, icon = 'more', size }: MenuButtonProp
 
   return (
     <>
-      <IconButton
-        ref={buttonRef}
-        icon={icon}
-        label={label}
-        size={size}
-        aria-haspopup="menu"
-        aria-expanded={position !== null}
-        onClick={toggle}
-      />
+      {text === undefined ? (
+        <IconButton
+          ref={buttonRef as Ref<HTMLButtonElement>}
+          icon={icon}
+          label={label}
+          size={size}
+          aria-haspopup="menu"
+          aria-expanded={position !== null}
+          onClick={toggle}
+        />
+      ) : (
+        <span ref={buttonRef as Ref<HTMLSpanElement>} className="md-menu-anchor">
+          <Button icon={icon === 'more' ? undefined : icon} size={size} aria-haspopup="menu" aria-expanded={position !== null} onClick={toggle}>
+            {text}
+          </Button>
+        </span>
+      )}
       {position &&
         createPortal(
           // React events bubble through portals; stop them so a row behind the menu never activates.
