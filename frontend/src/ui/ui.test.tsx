@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { Dialog, Input, MenuButton, SaveStatus, SegmentedControl, TreeItem, Wordmark } from './index';
+import { Dialog, Input, MenuButton, SaveStatus, SegmentedControl, TreeItem, VersionItem, Wordmark } from './index';
 
 describe('ui', () => {
   it('Wordmark is labelled md.IT', () => {
@@ -97,5 +97,23 @@ describe('ui', () => {
   it('SaveStatus names where work is saved', () => {
     render(<SaveStatus state="saved" />);
     expect(screen.getByRole('status')).toHaveTextContent('Saved locally');
+  });
+
+  it('VersionItem is a button showing the number, message, time and Current', async () => {
+    const onClick = vi.fn();
+    render(<VersionItem number={3} message="Tidy" time="2 hours ago" current onClick={onClick} />);
+    const item = screen.getByRole('button', { name: /v3/ });
+    expect(item).toHaveTextContent('v3');
+    expect(item).toHaveTextContent('Tidy');
+    expect(item).toHaveTextContent('2 hours ago');
+    expect(item).toHaveTextContent('Current');
+    await userEvent.click(item);
+    expect(onClick).toHaveBeenCalled();
+  });
+
+  it('VersionItem without a message says so', () => {
+    render(<VersionItem number={1} message={null} time="now" />);
+    expect(screen.getByRole('button')).toHaveTextContent('No message');
+    expect(screen.getByRole('button')).not.toHaveTextContent('Current');
   });
 });

@@ -1,4 +1,4 @@
-import type { CSSProperties, Ref } from 'react';
+import type { CSSProperties, ReactNode, Ref } from 'react';
 import { Editor, type EditorHandle } from '../editor';
 import { Preview, type Theme } from '../preview';
 import { EmptyState } from '../ui';
@@ -14,9 +14,11 @@ export interface DocumentAreaProps {
   onImageFiles: (files: File[], at: number | null) => void;
   onOpenDocument: (docId: string) => void;
   onNotice: (message: string) => void;
+  /** A saved version shown read-only in place of the editor and preview (P-081). */
+  viewer?: ReactNode;
 }
 
-export function DocumentArea({ docId, draft, html, theme, proseStyle, editorRef, onImageFiles, onOpenDocument, onNotice }: DocumentAreaProps) {
+export function DocumentArea({ docId, draft, html, theme, proseStyle, editorRef, onImageFiles, onOpenDocument, onNotice, viewer }: DocumentAreaProps) {
   if (draft.status === 'none') {
     return (
       <div className="ws-empty">
@@ -36,12 +38,14 @@ export function DocumentArea({ docId, draft, html, theme, proseStyle, editorRef,
     );
   }
   if (draft.status === 'loading') return <div className="ws-empty" aria-busy="true" />;
+  if (viewer) return viewer;
   return (
     <>
       <section className="ws-editor" aria-label="Editor">
         <Editor
           ref={editorRef}
-          key={docId}
+          // A restore or load rewrites the stored text; the new revision remounts the editor with it.
+          key={`${docId}:${draft.revision}`}
           initialContent={draft.initialContent}
           onChange={draft.onChange}
           onSave={draft.saveNow}

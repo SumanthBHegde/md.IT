@@ -57,6 +57,8 @@ Real GitHub or Google sign-in needs an OAuth app; set both of its values in `.en
 
 Callbacks go to `PUBLIC_BASE_URL` (default `http://localhost:8080`). The dev login also works under `npm run dev` on :5173, because the Vite proxy forwards `/api` and cookies ignore ports; real OAuth callbacks still land on :8080 unless you change `PUBLIC_BASE_URL` and the app's callback URL.
 
+To try sync by hand, open http://localhost:8080 in two browser profiles (or a normal and a private window), sign in as the same dev user in both, save a version in one, and use **In your account → Download** in the other. The typed API client in `frontend/src/api/` is generated from the backend: after changing a route, run `cd backend && python -m uv run python ../scripts/export_openapi.py > ../frontend/src/api/openapi.json`, then `cd frontend && npm run api:types` (CI fails when either file is stale).
+
 `python scripts/api_smoke.py http://localhost:8080` checks the whole version flow against a running stack: two cookie jars sign in as one dev user, one saves versions with an image, the other downloads them and checks their hashes, a stale save is refused, and deleting the account signs both out. CI runs it on every pull request.
 
 ## Status
@@ -69,4 +71,6 @@ Phase 3 (customization and export) complete: rendering settings (font, letter sp
 
 Phase 4 (backend foundation) complete: FastAPI service with liveness (`/api/health`) and readiness (`/api/health/ready`) checks, MySQL 8.4 schema for users, projects, documents, versions and blobs under Alembic, a Blob Storage wrapper tested against Azurite, Docker Compose for the whole stack, and CI for both halves.
 
-Phase 5a (login and versions API) built: sign-in with GitHub, Google or a development-only dev login, server-side sessions in an httpOnly cookie, CSRF protection, and an API for projects, documents, per-document versions with conflict detection (409), content-addressed blobs owned per user, and account deletion. API docs at http://localhost:8080/api/docs. The browser side (history panel, conflicts, opening on a new device) is Phase 5b. See `context.md` for progress.
+Phase 5a (login and versions API) complete: sign-in with GitHub, Google or a development-only dev login, server-side sessions in an httpOnly cookie, CSRF protection, and an API for projects, documents, per-document versions with conflict detection (409), content-addressed blobs owned per user, and account deletion. API docs at http://localhost:8080/api/docs.
+
+Phase 5b (versions in the browser) built: an account control in the toolbar (sign in, sign out, delete account), **Save version** with an optional message (Ctrl/Cmd+Shift+S), a **History** tab listing a document's versions with a read-only viewer (Restore, Delete), a conflict dialog when another browser saved first (**Load latest** or **Save mine as a copy**), and an **In your account** section on the project list that downloads a cloud project into a new browser. Everything still works signed out or offline. See `context.md` for progress.

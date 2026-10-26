@@ -1,6 +1,6 @@
-import { createPathIndex, createRenderContext, type PathIndex } from '../paths';
+import { createPathIndex, createRenderContext, usedImageIds } from '../paths';
 import { renderDiagrams, type MermaidApi, type TokenReader } from '../preview/mermaid';
-import { escapeHtml, render, type RenderContext } from '../renderer';
+import { escapeHtml, render } from '../renderer';
 import { toCssVars, type RenderingSettings } from '../settings';
 import type { ProjectSnapshot } from '../store';
 import { inlineCssUrls, pickFontFaces, type FetchBytes } from './assets';
@@ -79,21 +79,6 @@ export function lightTokens(css: string): TokenReader {
   return (name) => values.get(name) ?? '';
 }
 
-/** Ids of the stored images the document resolves to, so only those are embedded. */
-function usedImages(input: ExportInput, index: PathIndex): Set<string> {
-  const used = new Set<string>();
-  const probe: RenderContext = {
-    resolveImage(href) {
-      const found = index.resolve(input.folderId, href);
-      if (found.kind === 'image') used.add(found.id);
-      return { missing: true };
-    },
-    resolveLink: () => ({ unsupported: true }),
-  };
-  render(input.markdown, probe);
-  return used;
-}
-
 /** Mermaid lays diagrams out in the DOM, so they are rendered in an attached, offscreen container. */
 async function renderDiagramsToHtml(body: string, deps: ExportDeps): Promise<string> {
   const host = document.createElement('div');
@@ -125,7 +110,7 @@ function finishBody(html: string, mode: ExportMode): string {
 export async function buildExportHtml(input: ExportInput, deps: ExportDeps): Promise<string> {
   const { snapshot } = input;
   const index = createPathIndex(snapshot.folders, snapshot.documents, snapshot.images);
-  const used = usedImages(input, index);
+  const used = usedImageIds(input.markdown, input.folderId, index);
   const imageUrls = new Map(
     snapshot.images.filter((image) => used.has(image.id)).map((image) => [image.id, dataUri(image.contentType, new Uint8Array(image.bytes))] as const),
   );

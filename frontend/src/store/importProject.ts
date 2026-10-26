@@ -16,6 +16,7 @@ export async function importProject(data: ProjectImportData): Promise<Project> {
   return db.transaction('rw', hierarchyTables(), async () => {
     const at = now();
     const project: Project = { id: newId(), name, description: data.description, createdAt: at, updatedAt: at };
+    if (data.cloudProjectId !== undefined) project.cloudProjectId = data.cloudProjectId;
     await db.projects.add(project);
 
     const folderIds = new Map<string, string>([['', ROOT]]);
@@ -44,7 +45,11 @@ export async function importProject(data: ProjectImportData): Promise<Project> {
       const folderId = parentOf(doc.folder);
       const title = withMdExtension(normalizeName(doc.title));
       claim(folderId, title);
-      const row: DocumentRow = { id: newId(), projectId: project.id, folderId, title, content: doc.content, dirty: true, createdAt: at, updatedAt: at };
+      const row: DocumentRow = {
+        id: newId(), projectId: project.id, folderId, title, content: doc.content, dirty: doc.dirty ?? true, createdAt: at, updatedAt: at,
+      };
+      if (doc.cloudDocumentId !== undefined) row.cloudDocumentId = doc.cloudDocumentId;
+      if (doc.headVersionId !== undefined) row.headVersionId = doc.headVersionId;
       await db.documents.add(row);
     }
     for (const [i, image] of data.images.entries()) {

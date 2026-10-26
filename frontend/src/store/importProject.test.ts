@@ -51,4 +51,22 @@ describe('importProject', () => {
     await importProject(data());
     expect((await listProjectSummaries()).map((p) => p.name)).toEqual(['Imported', 'Imported']);
   });
+
+  it('stores cloud ids and dirty when given', async () => {
+    const project = await importProject(
+      data({
+        cloudProjectId: 'cloud-p',
+        documents: [{ folder: [], title: 'Intro.md', content: '# Hi', cloudDocumentId: 'cloud-d', headVersionId: 'v2', dirty: false }],
+      }),
+    );
+    expect(project.cloudProjectId).toBe('cloud-p');
+    const [doc] = await listDocuments(project.id);
+    expect(doc).toMatchObject({ cloudDocumentId: 'cloud-d', headVersionId: 'v2', dirty: false });
+  });
+
+  it('documents without cloud fields stay dirty and unlinked', async () => {
+    const project = await importProject(data());
+    expect(project.cloudProjectId).toBeUndefined();
+    expect((await listDocuments(project.id)).every((d) => d.dirty && d.cloudDocumentId === undefined)).toBe(true);
+  });
 });

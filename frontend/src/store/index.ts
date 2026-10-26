@@ -1,5 +1,8 @@
 export { clearDatabase } from './db';
 export {
+  clearCloudLinks, linkDocument, linkProject, placeImages, recordVersionSaved, setHeadVersion, writeVersionContent, type PlacedImage,
+} from './cloud';
+export {
   createDocument, deleteDocument, duplicateDocument, getDocument, listDocuments, moveDocument, renameDocument, saveDocumentContent,
 } from './documents';
 export { InvalidMoveError, NameConflictError, NotFoundError, StoreError, ValidationError, userMessage } from './errors';
