@@ -38,6 +38,17 @@ describe('AccountMenu', () => {
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/api/auth/login/github?next=%2Fp%2F1'));
   });
 
+  it('says when the server can’t be reached and tries again', async () => {
+    fake.offline = true;
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
+    expect(screen.getByRole('menuitem', { name: 'md.IT’s server can’t be reached' })).toBeDisabled();
+    fake.offline = false;
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Try again' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
+    expect(await screen.findByRole('menuitem', { name: 'Sign in with GitHub' })).toBeInTheDocument();
+  });
+
   it('signed out: the dev item asks for a valid name first', async () => {
     const assign = mount();
     await userEvent.click(await screen.findByRole('button', { name: 'Sign in' }));

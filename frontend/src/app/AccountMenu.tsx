@@ -52,7 +52,17 @@ export function AccountMenu({ onBeforeLeave, onAccountDeleted }: AccountMenuProp
         <MenuButton
           text="Sign in"
           label="Sign in"
-          items={items.length > 0 ? items : [{ label: 'Sign-in isn’t available right now', disabled: true }]}
+          items={
+            auth.state === 'unavailable'
+              ? [
+                  // The page loaded while the server was down (or it went away): say so, and offer a retry.
+                  { label: 'md.IT’s server can’t be reached', disabled: true },
+                  { label: 'Try again', onSelect: () => void auth.refresh() },
+                ]
+              : items.length > 0
+                ? items
+                : [{ label: 'Sign-in isn’t available right now', disabled: true }]
+          }
         />
         {dialog === 'dev' && <DevSignInDialog onClose={() => setDialog(null)} onSubmit={(name) => void leaveFor('dev', name)} />}
       </>

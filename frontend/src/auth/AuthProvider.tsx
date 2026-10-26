@@ -21,8 +21,13 @@ export function AuthProvider({ children, assign = (url) => window.location.assig
   const location = useLocation();
   const here = location.pathname + location.search;
 
+  /** Who is signed in, and which providers the server offers (both again after a failure). */
   const refresh = useCallback(async () => {
     const api = getApi();
+    const providersLoaded = request(() => api.GET('/api/auth/providers')).then(
+      (body) => setProviders(body.providers),
+      () => setProviders([]),
+    );
     try {
       const me = await request(() => api.GET('/api/me'));
       setUser(me);
@@ -31,15 +36,11 @@ export function AuthProvider({ children, assign = (url) => window.location.assig
       setUser(null);
       setState(error instanceof ApiError && error.status === 401 ? 'signed-out' : 'unavailable');
     }
+    await providersLoaded;
   }, []);
 
   useEffect(() => {
-    const api = getApi();
     void refresh();
-    request(() => api.GET('/api/auth/providers')).then(
-      (body) => setProviders(body.providers),
-      () => setProviders([]),
-    );
   }, [refresh]);
 
   const hiddenAt = useRef<number | null>(null);
