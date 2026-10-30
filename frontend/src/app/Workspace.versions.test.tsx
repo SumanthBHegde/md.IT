@@ -169,7 +169,7 @@ describe('Workspace versions', () => {
     await addImage(project.id, null, { name: 'd.svg', type: 'image/svg+xml', bytes: svg.buffer as ArrayBuffer });
     renderAt(`/p/${project.id}/d/${doc.id}`);
     await saveVersionNow();
-    await waitFor(() => expect(statusText()).toContain('Saved version 1 without d.svg: the server couldn’t accept that image.'));
+    await waitFor(() => expect(statusText()).toContain('Saved version 1 without d.svg: that image can’t be stored in the cloud.'));
     expect([...fake.versions.values()][0]!.images).toEqual([]);
   });
 
@@ -181,7 +181,7 @@ describe('Workspace versions', () => {
     fake.offline = true;
     await saveVersionNow();
     await waitFor(() =>
-      expect(statusText()).toContain('Couldn’t save a version: md.IT’s server can’t be reached. Your work is still saved in this browser.'),
+      expect(statusText()).toContain('Couldn’t save a version: md.IT can’t reach the cloud. Your work is still saved in this browser.'),
     );
   });
 

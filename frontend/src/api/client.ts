@@ -4,7 +4,7 @@ import type { paths } from './schema';
 /** The typed md.IT API (P-076). Only this module imports openapi-fetch. */
 export type Api = Client<paths>;
 
-export const OFFLINE_MESSAGE = 'md.IT’s server can’t be reached.';
+export const OFFLINE_MESSAGE = 'md.IT can’t reach the cloud.';
 
 /** An API failure: the server's error code and message, or `offline` (status 0) when it couldn't be reached. */
 export class ApiError extends Error {

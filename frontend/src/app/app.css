@@ -31,6 +31,11 @@ html, body, #root { height: 100%; }
 .ws-project { font: 500 13px/18px var(--font-sans); color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-body { flex: 1; min-height: 0; display: flex; }
 .ws-tree { width: var(--sidebar-width); flex: none; display: flex; flex-direction: column; background: var(--paper-sunken); border-right: 1px solid var(--line); overflow: auto; }
+/* A 7px grab area centred on the tree's border; above notices (5), below menus (30). */
+.ws-resizer { flex: none; position: relative; z-index: 6; width: 7px; margin-inline: -4px -3px; cursor: col-resize; touch-action: none; }
+.ws-resizer::after { content: ""; position: absolute; inset-block: 0; left: 3px; width: 1px; transition: background-color .12s ease-out; }
+.ws-resizer:hover::after, .ws-resizer:active::after { background: var(--line-strong); }
+.ws-resizer:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .ws-main { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr; }
 .ws-main.mode-editor, .ws-main.mode-preview { grid-template-columns: 1fr; }
 .ws-main.mode-editor .ws-preview, .ws-main.mode-preview .ws-editor { display: none; }
@@ -51,7 +56,7 @@ html, body, #root { height: 100%; }
 .import-skipped { margin: 0 0 var(--space-3); padding-left: 1.2em; font: 400 13px/20px var(--font-sans); overflow-wrap: anywhere; }
 .update-notice { position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%); width: min(480px, calc(100% - var(--space-8))); z-index: 40; }
 /* Coming back from a failed sign-in (P-077): top of the page, above everything. */
-.login-notice { position: fixed; left: 50%; top: calc(44px + var(--space-3)); transform: translateX(-50%); width: min(480px, calc(100% - var(--space-8))); z-index: 40; }
+.login-notice { position: fixed; left: 50%; top: calc(var(--toolbar-height) + var(--space-3)); transform: translateX(-50%); width: min(480px, calc(100% - var(--space-8))); z-index: 40; }
 
 /* ---------- versions (Phase 5b, P-081) ---------- */
 .history-list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: 2px; }
@@ -64,7 +69,7 @@ html, body, #root { height: 100%; }
 .ws-version-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 .ws-version-body { flex: 1; min-height: 0; overflow: auto; }
 .cloud-projects { margin-top: var(--space-8); display: flex; flex-direction: column; gap: var(--space-3); }
-.cloud-projects h2 { margin: 0; font: 600 15px/20px var(--font-sans); color: var(--ink); }
+.cloud-projects h2 { margin: 0; font: 600 14px/20px var(--font-sans); color: var(--ink); }
 .cloud-projects-empty { margin: 0; font: 400 13px/20px var(--font-sans); color: var(--ink-muted); }
 .cloud-projects-busy { min-height: 48px; }
 .cloud-project-row { align-items: center; padding-right: var(--space-3); }

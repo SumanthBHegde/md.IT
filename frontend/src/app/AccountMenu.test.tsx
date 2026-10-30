@@ -42,7 +42,7 @@ describe('AccountMenu', () => {
     fake.offline = true;
     mount();
     await userEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
-    expect(screen.getByRole('menuitem', { name: 'md.IT’s server can’t be reached' })).toBeDisabled();
+    expect(screen.getByRole('menuitem', { name: 'md.IT can’t reach the cloud' })).toBeDisabled();
     fake.offline = false;
     await userEvent.click(screen.getByRole('menuitem', { name: 'Try again' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Sign in' }));
@@ -92,7 +92,7 @@ describe('AccountMenu', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Account: dev user' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete account…' }));
     expect(
-      screen.getByText('Delete your account? Every saved version and image is removed from md.IT’s servers. Projects in this browser stay.'),
+      screen.getByText('Delete your account? Every saved version and image is removed from the cloud. Projects in this browser stay.'),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Delete account' }));
     expect(await screen.findByRole('button', { name: 'Sign in' })).toBeInTheDocument();

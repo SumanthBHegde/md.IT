@@ -47,7 +47,7 @@ describe('api client', () => {
     await expect(request(() => api.GET('/api/projects'))).rejects.toMatchObject({
       status,
       code: 'unavailable',
-      message: 'md.IT’s server can’t be reached.',
+      message: 'md.IT can’t reach the cloud.',
     });
   });
 
@@ -57,7 +57,7 @@ describe('api client', () => {
     await expect(request(() => api.GET('/api/projects'))).rejects.toMatchObject({
       status: 0,
       code: 'offline',
-      message: 'md.IT’s server can’t be reached.',
+      message: 'md.IT can’t reach the cloud.',
     });
   });
 });

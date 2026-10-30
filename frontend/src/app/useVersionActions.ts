@@ -89,7 +89,7 @@ export function useVersionActions({ docId, draft, currentText, notify, openDocum
         if (result.skippedImages.length > 0) {
           const one = result.skippedImages.length === 1;
           notify(
-            `Saved version ${result.version.number} without ${listPhrase(result.skippedImages)}: the server couldn’t accept ${one ? 'that image' : 'those images'}.`,
+            `Saved version ${result.version.number} without ${listPhrase(result.skippedImages)}: ${one ? 'that image can’t' : 'those images can’t'} be stored in the cloud.`,
           );
         }
       } catch (error) {

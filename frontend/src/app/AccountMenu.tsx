@@ -56,7 +56,7 @@ export function AccountMenu({ onBeforeLeave, onAccountDeleted }: AccountMenuProp
             auth.state === 'unavailable'
               ? [
                   // The page loaded while the server was down (or it went away): say so, and offer a retry.
-                  { label: 'md.IT’s server can’t be reached', disabled: true },
+                  { label: 'md.IT can’t reach the cloud', disabled: true },
                   { label: 'Try again', onSelect: () => void auth.refresh() },
                 ]
               : items.length > 0
@@ -86,7 +86,7 @@ export function AccountMenu({ onBeforeLeave, onAccountDeleted }: AccountMenuProp
       {dialog === 'delete' && (
         <ConfirmDialog
           title="Delete account"
-          message="Delete your account? Every saved version and image is removed from md.IT’s servers. Projects in this browser stay."
+          message="Delete your account? Every saved version and image is removed from the cloud. Projects in this browser stay."
           confirmLabel="Delete account"
           onClose={() => setDialog(null)}
           onConfirm={async () => {

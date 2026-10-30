@@ -6,6 +6,7 @@ export const SETTINGS = {
   storageWarningDismissed: 'ui.storageWarningDismissed',
   panel: 'ui.panel',
   panelTab: 'ui.panelTab',
+  treeWidth: 'ui.treeWidth',
   rendering: 'doc.rendering',
 } as const;
 

@@ -23,6 +23,7 @@ import { SidePanel, type PanelTab } from './SidePanel';
 import { useResolvedTheme } from './theme';
 import { SaveVersionDialog } from './SaveVersionDialog';
 import { ThemeMenu } from './ThemeMenu';
+import { TreeResizer, useTreeWidth } from './TreeResizer';
 import { useDocumentDraft } from './useDocumentDraft';
 import { useProjectFiles } from './useProjectFiles';
 import { useVersionActions } from './useVersionActions';
@@ -43,6 +44,7 @@ export function Workspace() {
   const [mode, setMode] = useSettingState<ViewMode>(SETTINGS.mode, 'split');
   const [panelOpen, setPanelOpen] = useSettingState<boolean>(SETTINGS.panel, false);
   const [panelTab, setPanelTab] = useSettingState<PanelTab>(SETTINGS.panelTab, 'outline');
+  const treeWidth = useTreeWidth();
   const draft = useDocumentDraft(docId);
   const theme = useResolvedTheme();
   const [rendering, updateRendering, resetRendering] = useRenderingSettings();
@@ -251,7 +253,7 @@ export function Workspace() {
         </div>
       </header>
       <div className="ws-body">
-        <aside className="ws-tree" aria-label="Project files">
+        <aside className="ws-tree" aria-label="Project files" style={{ '--sidebar-width': `${treeWidth.width}px` } as CSSProperties}>
           <SearchBox value={query} onChange={setQuery} />
           {searching && <SearchResults projectId={projectId} query={query} onOpenDocument={openFromSearch} onReveal={revealFromSearch} />}
           <div className="ws-tree-files" hidden={searching}>
@@ -267,6 +269,7 @@ export function Workspace() {
             />
           </div>
         </aside>
+        <TreeResizer width={treeWidth.width} onResize={treeWidth.preview} onResizeEnd={treeWidth.commit} />
         <main ref={mainRef} className={`ws-main mode-${mode}`}>
           <DocumentArea
             docId={docId}
