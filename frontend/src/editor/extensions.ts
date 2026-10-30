@@ -1,9 +1,12 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { syntaxHighlighting } from '@codemirror/language';
-import type { Extension } from '@codemirror/state';
-import { drawSelection, EditorView, keymap } from '@codemirror/view';
+import { openSearchPanel, search, searchKeymap } from '@codemirror/search';
+import { EditorState, type Extension } from '@codemirror/state';
+import { drawSelection, EditorView, keymap, type KeyBinding } from '@codemirror/view';
 import { imageFiles } from './files';
+import { COMMANDS, type CommandId } from './formatting';
+import { EDITOR_KEYS, REPLACE_KEY } from './shortcuts';
 import { editorTheme, markdownHighlight } from './theme';
 
 export interface EditorCallbacks {
@@ -11,23 +14,50 @@ export interface EditorCallbacks {
   onSave: () => void;
   onImageFiles: (files: File[], at: number | null) => void;
   onFocus: () => void;
+  /** The text or the selection changed. */
+  onUpdate: (state: EditorState) => void;
 }
 
-export function createExtensions({ onChange, onSave, onImageFiles, onFocus }: EditorCallbacks): Extension[] {
+const formatKeys: KeyBinding[] = (Object.entries(EDITOR_KEYS) as Array<[CommandId, string]>).map(([id, key]) => ({
+  key,
+  preventDefault: true,
+  run: COMMANDS[id],
+}));
+
+/** The search panel's words in the design system's sentence case. */
+const searchPhrases = EditorState.phrases.of({
+  next: 'Next',
+  previous: 'Previous',
+  all: 'All',
+  'match case': 'Match case',
+  'by word': 'Whole word',
+  regexp: 'Regular expression',
+  replace: 'Replace',
+  'replace all': 'Replace all',
+  close: 'Close',
+});
+
+export function createExtensions({ onChange, onSave, onImageFiles, onFocus, onUpdate }: EditorCallbacks): Extension[] {
   return [
     history(),
     drawSelection(),
     EditorView.lineWrapping,
     markdown({ base: markdownLanguage }), // GFM
     syntaxHighlighting(markdownHighlight),
+    search({ top: true }),
+    searchPhrases,
     keymap.of([
       { key: 'Mod-s', preventDefault: true, run: () => (onSave(), true) },
+      { key: REPLACE_KEY, preventDefault: true, run: openSearchPanel },
+      ...formatKeys, // before the defaults: Mod-i would otherwise select the parent syntax node
+      ...searchKeymap,
       ...defaultKeymap,
       ...historyKeymap,
       indentWithTab,
     ]),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) onChange(update.state.doc.toString());
+      if (update.docChanged || update.selectionSet) onUpdate(update.state);
     }),
     EditorView.contentAttributes.of({ 'aria-label': 'Markdown source' }),
     EditorView.domEventHandlers({

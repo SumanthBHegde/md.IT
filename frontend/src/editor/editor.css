@@ -1,0 +1,14 @@
+/* Editor toolbar (P-097). The frame measures the pane, so the row responds to the pane's width, not the window's. */
+.editor-toolbar-frame { flex: none; container-type: inline-size; background: var(--paper-raised); border-bottom: 1px solid var(--line); }
+.editor-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: 36px; padding: var(--space-1) var(--space-2); box-sizing: border-box; }
+.editor-toolbar-group { display: flex; align-items: center; gap: 2px; }
+.editor-toolbar-group + .editor-toolbar-group { padding-left: var(--space-1); border-left: 1px solid var(--line); }
+.editor-toolbar-style .md-btn { min-width: 116px; justify-content: space-between; }
+.editor-toolbar-find { margin-left: auto; border-left: 0 !important; }
+.editor-toolbar-more { display: none; }
+
+/* Not enough room for every button: the less used ones move into More, and below that the row wraps. */
+@container (max-width: 760px) {
+  .editor-toolbar-wide { display: none; }
+  .editor-toolbar-more { display: flex; }
+}

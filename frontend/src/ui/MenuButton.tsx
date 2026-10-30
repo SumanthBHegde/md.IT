@@ -14,10 +14,12 @@ export interface MenuButtonProps {
   size?: 'sm' | 'md';
   /** App extension (P-013): a text button (e.g. "Sign in") instead of an icon button; `icon` then leads the text. */
   text?: string;
+  /** App extension (P-097): an icon after the text, such as the chevron of a dropdown. */
+  iconRight?: IconName;
 }
 
 /** An IconButton (or a text Button) that opens a Menu in a fixed-position popover (never clipped by scrolling panels). */
-export function MenuButton({ items, label, icon = 'more', size, text }: MenuButtonProps) {
+export function MenuButton({ items, label, icon = 'more', size, text, iconRight }: MenuButtonProps) {
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
   /** The trigger: the IconButton itself, or the span around a text Button (Button doesn't forward refs). */
   const buttonRef = useRef<HTMLElement>(null);
@@ -82,7 +84,16 @@ export function MenuButton({ items, label, icon = 'more', size, text }: MenuButt
         />
       ) : (
         <span ref={buttonRef as Ref<HTMLSpanElement>} className="md-menu-anchor">
-          <Button icon={icon === 'more' ? undefined : icon} size={size} aria-haspopup="menu" aria-expanded={position !== null} onClick={toggle}>
+          <Button
+            icon={icon === 'more' ? undefined : icon}
+            iconRight={iconRight}
+            size={size}
+            aria-label={label}
+            title={label === text ? undefined : label}
+            aria-haspopup="menu"
+            aria-expanded={position !== null}
+            onClick={toggle}
+          >
             {text}
           </Button>
         </span>

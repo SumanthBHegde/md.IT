@@ -227,6 +227,53 @@ describe('Workspace', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Hello' })).toBeInTheDocument(); // the image didn't join the heading
   });
 
+  it('shows the open document’s name in the header', async () => {
+    const { project, doc } = await projectWithDocument();
+    const { container } = renderAt(`/p/${project.id}/d/${doc.id}`);
+    await waitFor(() => expect(container.querySelector('.ws-document')).toHaveTextContent('Intro.md'));
+  });
+
+  it('creates and opens a document from the empty state', async () => {
+    const project = await createProject('OS');
+    const { container } = renderAt(`/p/${project.id}`);
+    const empty = (await screen.findByText('No document open')).closest<HTMLElement>('.ws-empty')!;
+    await userEvent.click(within(empty).getByRole('button', { name: 'New document' }));
+    await waitFor(() => expect(container.querySelector('.cm-editor')).not.toBeNull());
+  });
+
+  it('hides the file tree and remembers it; Ctrl+\\ brings it back', async () => {
+    const { project, doc } = await projectWithDocument();
+    const { container } = renderAt(`/p/${project.id}/d/${doc.id}`);
+    const tree = () => container.querySelector('.ws-tree')!;
+    await userEvent.click(await screen.findByRole('button', { name: 'Hide file tree (Ctrl+\\)' }));
+    await waitFor(() => expect(tree()).toHaveAttribute('hidden'));
+    expect(screen.queryByRole('separator', { name: 'Resize file tree' })).not.toBeInTheDocument();
+    await waitFor(async () => expect(await getSetting(SETTINGS.tree, true)).toBe(false));
+    fireEvent.keyDown(window, { key: '\\', ctrlKey: true });
+    await waitFor(() => expect(tree()).not.toHaveAttribute('hidden'));
+    expect(screen.getByRole('separator', { name: 'Resize file tree' })).toBeInTheDocument();
+  });
+
+  it('Ctrl+Shift+F opens a hidden tree and focuses search', async () => {
+    await setSetting(SETTINGS.tree, false);
+    const { project, doc } = await projectWithDocument();
+    renderAt(`/p/${project.id}/d/${doc.id}`);
+    await screen.findByRole('button', { name: 'Show file tree (Ctrl+\\)' });
+    fireEvent.keyDown(window, { key: 'F', ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(screen.getByRole('searchbox')).toHaveFocus());
+  });
+
+  it('opens keyboard shortcuts from the header and with F1', async () => {
+    const { project, doc } = await projectWithDocument();
+    renderAt(`/p/${project.id}/d/${doc.id}`);
+    await userEvent.click(await screen.findByRole('button', { name: 'Keyboard shortcuts (F1)' }));
+    const dialog = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    await userEvent.click(within(dialog).getAllByRole('button', { name: 'Close' }).at(-1)!);
+    expect(screen.queryByRole('dialog', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'F1' });
+    expect(await screen.findByRole('dialog', { name: 'Keyboard shortcuts' })).toBeInTheDocument();
+  });
+
   it('adds an image but doesn’t insert it into a document opened meanwhile', async () => {
     const { project, doc } = await projectWithDocument('# Hello');
     const other = await createDocument(project.id, null, 'Other');

@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import { Editor, type EditorHandle } from '../editor';
 import { Preview, type Theme } from '../preview';
-import { EmptyState } from '../ui';
+import { Button, EmptyState } from '../ui';
 import type { DocumentDraft } from './useDocumentDraft';
 
 export interface DocumentAreaProps {
@@ -12,17 +12,27 @@ export interface DocumentAreaProps {
   proseStyle?: CSSProperties;
   editorRef: Ref<EditorHandle>;
   onImageFiles: (files: File[], at: number | null) => void;
+  onInsertImage: () => void;
+  onNewDocument: () => void;
   onOpenDocument: (docId: string) => void;
   onNotice: (message: string) => void;
   /** A saved version shown read-only in place of the editor and preview (P-081). */
   viewer?: ReactNode;
 }
 
-export function DocumentArea({ docId, draft, html, theme, proseStyle, editorRef, onImageFiles, onOpenDocument, onNotice, viewer }: DocumentAreaProps) {
+export function DocumentArea({ docId, draft, html, theme, proseStyle, editorRef, onImageFiles, onInsertImage, onNewDocument, onOpenDocument, onNotice, viewer }: DocumentAreaProps) {
   if (draft.status === 'none') {
     return (
       <div className="ws-empty">
-        <EmptyState icon="file" title="No document open">
+        <EmptyState
+          icon="file"
+          title="No document open"
+          action={
+            <Button variant="primary" icon="plus" onClick={onNewDocument}>
+              New document
+            </Button>
+          }
+        >
           Open a document from the tree, or create one.
         </EmptyState>
       </div>
@@ -50,6 +60,7 @@ export function DocumentArea({ docId, draft, html, theme, proseStyle, editorRef,
           onChange={draft.onChange}
           onSave={draft.saveNow}
           onImageFiles={onImageFiles}
+          onInsertImage={onInsertImage}
         />
       </section>
       <section className="ws-preview" aria-label="Preview">

@@ -1,4 +1,5 @@
-import { act, fireEvent, render } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { createRef } from 'react';
 import { EditorView } from '@codemirror/view';
 import { describe, expect, it, vi } from 'vitest';
@@ -48,6 +49,68 @@ describe('Editor', () => {
     const { container, unmount } = setup();
     unmount();
     expect(container.querySelector('.cm-editor')).toBeNull();
+  });
+});
+
+describe('Editor toolbar', () => {
+  const button = (name: RegExp) => screen.getByRole('button', { name });
+
+  it('formats the selection from a button and keeps the editor usable', async () => {
+    const { view, onChange } = setup('word');
+    act(() => view.dispatch({ selection: { anchor: 0, head: 4 } }));
+    await userEvent.click(button(/^Bold/));
+    expect(onChange).toHaveBeenLastCalledWith('**word**');
+    expect(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)).toBe('word');
+    expect(view.hasFocus).toBe(true);
+  });
+
+  it('marks what the cursor is in as it moves', async () => {
+    const { view } = setup('**bold** plain');
+    act(() => view.dispatch({ selection: { anchor: 3 } }));
+    await waitFor(() => expect(button(/^Bold/)).toHaveAttribute('aria-pressed', 'true'));
+    act(() => view.dispatch({ selection: { anchor: 11 } }));
+    await waitFor(() => expect(button(/^Bold/)).not.toHaveAttribute('aria-pressed', 'true'));
+  });
+
+  it('undoes through the toolbar', async () => {
+    const { view, onChange } = setup('word');
+    expect(button(/^Undo/)).toBeDisabled();
+    act(() => view.dispatch({ selection: { anchor: 0, head: 4 } }));
+    await userEvent.click(button(/^Italic/));
+    await userEvent.click(button(/^Undo/));
+    expect(onChange).toHaveBeenLastCalledWith('word');
+    expect(button(/^Redo/)).toBeEnabled();
+  });
+
+  it('runs formatting shortcuts, including over a default binding', () => {
+    const { container, view, onChange } = setup('word');
+    act(() => view.dispatch({ selection: { anchor: 0, head: 4 } }));
+    const content = container.querySelector('.cm-content')!;
+    fireEvent.keyDown(content, { key: 'b', ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith('**word**');
+    fireEvent.keyDown(content, { key: 'i', ctrlKey: true });
+    expect(onChange).toHaveBeenLastCalledWith('***word***');
+  });
+
+  it('sets a heading from the style menu and shows it', async () => {
+    const { onChange } = setup('Title');
+    await userEvent.click(screen.getByRole('button', { name: 'Text style: Normal text' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: /Heading 2/ }));
+    expect(onChange).toHaveBeenLastCalledWith('## Title');
+    expect(await screen.findByRole('button', { name: 'Text style: Heading 2' })).toBeInTheDocument();
+  });
+
+  it('opens find and replace from the button, with its labels in sentence case', async () => {
+    const { container } = setup();
+    await userEvent.click(button(/^Find and replace/));
+    expect(container.querySelector('.cm-search')).not.toBeNull();
+    expect(within(container.querySelector<HTMLElement>('.cm-search')!).getByRole('button', { name: 'Replace all' })).toBeInTheDocument();
+  });
+
+  it('opens find and replace with Ctrl+H', () => {
+    const { container } = setup();
+    fireEvent.keyDown(container.querySelector('.cm-content')!, { key: 'h', ctrlKey: true });
+    expect(container.querySelector('.cm-search')).not.toBeNull();
   });
 });
 

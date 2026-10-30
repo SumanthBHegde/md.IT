@@ -28,9 +28,12 @@ html, body, #root { height: 100%; }
 .ws-left, .ws-right { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .ws-right { justify-content: flex-end; }
 .ws-crumb-sep { color: var(--ink-faint); }
-.ws-project { font: 500 13px/18px var(--font-sans); color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-project, .ws-document { font: 500 13px/18px var(--font-sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-project { flex-shrink: 2; color: var(--ink-muted); }
+.ws-document { color: var(--ink); }
 .ws-body { flex: 1; min-height: 0; display: flex; }
 .ws-tree { width: var(--sidebar-width); flex: none; display: flex; flex-direction: column; background: var(--paper-sunken); border-right: 1px solid var(--line); overflow: auto; }
+.ws-tree[hidden] { display: none; }
 /* A 7px grab area centred on the tree's border; above notices (5), below menus (30). */
 .ws-resizer { flex: none; position: relative; z-index: 6; width: 7px; margin-inline: -4px -3px; cursor: col-resize; touch-action: none; }
 .ws-resizer::after { content: ""; position: absolute; inset-block: 0; left: 3px; width: 1px; transition: background-color .12s ease-out; }
@@ -39,9 +42,11 @@ html, body, #root { height: 100%; }
 .ws-main { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr; }
 .ws-main.mode-editor, .ws-main.mode-preview { grid-template-columns: 1fr; }
 .ws-main.mode-editor .ws-preview, .ws-main.mode-preview .ws-editor { display: none; }
-.ws-editor { min-width: 0; min-height: 0; overflow: hidden; background: var(--paper-raised); }
+.ws-editor { min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--paper-raised); }
 .ws-main.mode-split .ws-editor { border-right: 1px solid var(--line); }
-.editor-host, .editor-host .cm-editor { height: 100%; }
+.editor-host { flex: 1; min-height: 0; }
+.editor-host .cm-editor { height: 100%; }
+.ws-main.mode-editor .cm-content { margin-inline: auto; }
 .ws-preview { min-width: 0; overflow: auto; background: var(--paper); }
 .ws-empty { grid-column: 1 / -1; display: grid; place-items: center; }
 .ws-main { position: relative; }
@@ -57,6 +62,12 @@ html, body, #root { height: 100%; }
 .update-notice { position: fixed; left: 50%; bottom: var(--space-4); transform: translateX(-50%); width: min(480px, calc(100% - var(--space-8))); z-index: 40; }
 /* Coming back from a failed sign-in (P-077): top of the page, above everything. */
 .login-notice { position: fixed; left: 50%; top: calc(var(--toolbar-height) + var(--space-3)); transform: translateX(-50%); width: min(480px, calc(100% - var(--space-8))); z-index: 40; }
+
+/* ---------- keyboard shortcuts ---------- */
+.shortcuts { max-height: 60vh; overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); padding-bottom: var(--space-1); color: var(--ink); }
+.shortcuts-list { list-style: none; margin: var(--space-1) 0 0; padding: 0; }
+.shortcuts-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; font: 400 13px/20px var(--font-sans); }
+.shortcuts-keys { display: inline-flex; gap: var(--space-1); }
 
 /* ---------- versions (Phase 5b, P-081) ---------- */
 .history-list { list-style: none; margin: 0; padding: var(--space-2); display: flex; flex-direction: column; gap: 2px; }
