@@ -37,7 +37,8 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor({ in
       const view = viewRef.current;
       if (!view) return;
       const doc = view.state.doc;
-      const from = at ?? (focusedRef.current ? view.state.selection.main.head : doc.length);
+      // `at` can be stale: the text may have changed while an image was being stored.
+      const from = Math.min(at ?? (focusedRef.current ? view.state.selection.main.head : doc.length), doc.length);
       const before = doc.sliceString(Math.max(0, from - 2), from);
       const after = doc.sliceString(from, Math.min(doc.length, from + 2));
       const prefix = from === 0 || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';

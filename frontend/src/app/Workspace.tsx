@@ -105,22 +105,28 @@ export function Workspace() {
   const currentText = useCallback(() => editorRef.current?.getText() ?? draft.previewSource, [draft.previewSource]);
   const versions = useVersionActions({ docId, draft, currentText, notify: showNotice, openDocument });
   const versionSaved = draft.saveState === 'saved' && docRow !== undefined && !docRow.dirty && docRow.headVersionId !== undefined;
-  const [viewing, setViewing] = useState<{ version: VersionSummary; text: string; latestId: string } | null>(null);
+  const [viewing, setViewing] = useState<{ version: VersionSummary; text: string } | null>(null);
   const viewerHtml = useMemo(() => (viewing ? render(viewing.text, files.context) : ''), [viewing, files.context]);
   useEffect(() => setViewing(null), [docId]);
   // The editor was unmounted while the viewer showed; it must come back with the stored text,
   // not the text it was first loaded with (edits since then would vanish, then be overwritten).
-  const { reload: reloadDraft } = draft;
-  const closeViewer = useCallback(() => {
+  const { reload: reloadDraft, flush: flushDraft } = draft;
+  const closeViewer = useCallback(async () => {
+    try {
+      await flushDraft(); // an edit typed while the version was opening
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : 'Your last changes couldn’t be saved in this browser.');
+      return;
+    }
     setViewing(null);
     reloadDraft();
-  }, [reloadDraft]);
+  }, [flushDraft, reloadDraft, showNotice]);
   const openVersion = useCallback(
-    async (version: VersionSummary, latestId: string) => {
+    async (version: VersionSummary) => {
       try {
         await draft.flush();
         const { text } = await readVersion(version.id);
-        setViewing({ version, text, latestId });
+        setViewing({ version, text });
       } catch (error) {
         showNotice(`Couldn’t open version ${version.number}: ${error instanceof Error ? error.message.replace(/[.\s]+$/, '') : 'something went wrong'}.`);
       }
@@ -131,8 +137,11 @@ export function Workspace() {
   const insertFiles = useCallback(
     async (list: File[], at: number | null) => {
       if (list.length === 0) return;
+      // The editor remounts per document and per restore, so a new handle means the text changed under us.
+      const editor = editorRef.current;
       const { markdown, errors } = await addImagesNextTo(projectId, docFolderId, list);
-      if (markdown) editorRef.current?.insertBlock(markdown, at);
+      if (markdown && editor && editor === editorRef.current) editor.insertBlock(markdown, at);
+      else if (markdown) errors.push('Added to the project, but it wasn’t inserted because the open document changed.');
       if (errors.length > 0) showNotice(errors.join(' '));
     },
     [projectId, docFolderId, showNotice],
@@ -290,12 +299,12 @@ export function Workspace() {
                   proseStyle={proseStyle}
                   dirty={docRow?.dirty !== false}
                   onNotice={showNotice}
-                  onClose={closeViewer}
+                  onClose={() => void closeViewer()}
                   onRestore={async () => {
-                    if (await versions.restore(viewing.version.id, viewing.version.number, viewing.latestId)) setViewing(null);
+                    if (await versions.restore(viewing.version.id, viewing.version.number)) setViewing(null);
                   }}
                   onDelete={async () => {
-                    if (await versions.remove(viewing.version.id)) closeViewer();
+                    if (await versions.remove(viewing.version.id)) await closeViewer();
                   }}
                 />
               )
@@ -318,7 +327,7 @@ export function Workspace() {
                 headVersionId={docRow?.headVersionId}
                 signedIn={auth.state === 'signed-in'}
                 refreshKey={versions.refreshKey}
-                onOpen={(version, latestId) => void openVersion(version, latestId)}
+                onOpen={(version) => void openVersion(version)}
               />
             }
           />

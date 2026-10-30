@@ -60,6 +60,12 @@ describe('Editor insert and images', () => {
     return { ref, onChange, onImageFiles, content: container.querySelector<HTMLElement>('.cm-content')! };
   };
 
+  it('clamps a stale drop position to the document', () => {
+    const { ref, onChange } = setupWithHandle('# Hello');
+    act(() => ref.current!.insertBlock('![a](a.png)', 999));
+    expect(onChange).toHaveBeenLastCalledWith('# Hello\n\n![a](a.png)');
+  });
+
   it('inserts a block at the end before the editor has had focus, then at the cursor', () => {
     const { ref, onChange } = setupWithHandle('# Hello');
     act(() => ref.current!.insertBlock('![a](a.png)'));

@@ -227,6 +227,20 @@ describe('Workspace', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Hello' })).toBeInTheDocument(); // the image didn't join the heading
   });
 
+  it('adds an image but doesn’t insert it into a document opened meanwhile', async () => {
+    const { project, doc } = await projectWithDocument('# Hello');
+    const other = await createDocument(project.id, null, 'Other');
+    await saveDocumentContent(other.id, 'Other text');
+    const { container } = renderAt(`/p/${project.id}/d/${doc.id}`);
+    await screen.findByRole('heading', { level: 1, name: 'Hello' });
+    fireEvent.change(fileInput(container), { target: { files: [pngFile('late.png')] } });
+    fireEvent.click(await screen.findByText('Other.md'));
+    await waitFor(() => expect(container.querySelector('.ws-notice')).toHaveTextContent('wasn’t inserted'));
+    await waitFor(() => expect(editorText(container)).toContain('Other text'));
+    expect(editorText(container)).not.toContain('late.png');
+    expect(await screen.findByRole('treeitem', { name: 'images' })).toBeInTheDocument();
+  });
+
   it('reports refused files in a notice and creates no folder', async () => {
     const { project, doc } = await projectWithDocument('# Hello');
     const { container } = renderAt(`/p/${project.id}/d/${doc.id}`);

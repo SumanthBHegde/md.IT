@@ -10,7 +10,7 @@ type State = { status: 'reading' } | { status: 'ready'; parsed: ParsedProjectZip
 export interface ImportDialogProps {
   file: File;
   onClose: () => void;
-  onImported: (projectId: string) => void;
+  onImported: (projectId: string, notice?: string) => void;
 }
 
 const SHOWN_SKIPS = 5;
@@ -59,14 +59,24 @@ export function ImportDialog({ file, onClose, onImported }: ImportDialogProps) {
   const submit = async () => {
     setBusy(true);
     setError(null);
+    let projectId: string;
     try {
-      const project = await importProject(parsed);
-      if (useSettings && parsed.rendering) await setSetting(SETTINGS.rendering, parsed.rendering);
-      onImported(project.id);
+      projectId = (await importProject(parsed)).id;
     } catch (err) {
       setError(userMessage(err));
       setBusy(false);
+      return;
     }
+    // The project exists from here on: a failure below must not offer a retry that would import it twice.
+    let notice: string | undefined;
+    if (useSettings && parsed.rendering) {
+      try {
+        await setSetting(SETTINGS.rendering, parsed.rendering);
+      } catch {
+        notice = 'Imported the project, but its rendering settings couldn’t be applied.';
+      }
+    }
+    onImported(projectId, notice);
   };
 
   return (

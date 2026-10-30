@@ -59,7 +59,7 @@ describe('HistoryPanel', () => {
     const onOpen = vi.fn();
     render(<HistoryPanel docId={doc.id} headVersionId={v2.id} signedIn refreshKey={0} onOpen={onOpen} />);
     await userEvent.click((await screen.findAllByRole('button', { name: /^v1/ }))[0]!);
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: v1.id, number: 1 }), v2.id);
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: v1.id, number: 1 }));
   });
 
   it('says when versions can’t be loaded', async () => {

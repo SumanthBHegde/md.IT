@@ -151,9 +151,9 @@ export function ProjectList() {
         <ImportDialog
           file={dialog.file}
           onClose={close}
-          onImported={(id) => {
+          onImported={(id, notice) => {
             close();
-            open(id);
+            navigate(`/p/${id}`, { state: { notice } });
           }}
         />
       )}

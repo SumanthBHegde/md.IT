@@ -10,7 +10,7 @@ export interface HistoryPanelProps {
   signedIn: boolean;
   /** Bumped after every save, load, restore or delete. */
   refreshKey: number;
-  onOpen: (version: VersionSummary, latestId: string) => void;
+  onOpen: (version: VersionSummary) => void;
 }
 
 type Listing = { status: 'loading' } | { status: 'none' } | { status: 'error' } | { status: 'ready'; versions: VersionSummary[] };
@@ -56,7 +56,6 @@ export function HistoryPanel({ docId, headVersionId, signedIn, refreshKey, onOpe
       </EmptyState>
     );
   }
-  const latestId = listing.versions[0]!.id;
   return (
     <ul className="history-list" aria-label="Versions">
       {listing.versions.map((version) => (
@@ -66,7 +65,7 @@ export function HistoryPanel({ docId, headVersionId, signedIn, refreshKey, onOpe
             message={version.message}
             time={formatRelativeTime(Date.parse(version.created_at))}
             current={version.id === headVersionId}
-            onClick={() => onOpen(version, latestId)}
+            onClick={() => onOpen(version)}
           />
         </li>
       ))}

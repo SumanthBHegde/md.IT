@@ -133,6 +133,40 @@ describe('Workspace versions', () => {
     expect((await getDocument(doc.id))!.content).toBe('# From the other browser');
   });
 
+  it('Load latest stores a pending edit first, so autosave can’t overwrite the loaded text', async () => {
+    fake.signIn();
+    const { project, doc } = await projectWithDocument();
+    const { container } = renderAt(`/p/${project.id}/d/${doc.id}`);
+    await saveVersionNow();
+    await waitFor(() => expect(fake.versions.size).toBe(1));
+    fake.addVersion((await getDocument(doc.id))!.cloudDocumentId!, '# From the other browser');
+    type(container, '\n\nMine');
+    await saveVersionNow();
+    await screen.findByRole('dialog', { name: 'A newer version exists' });
+    type(container, ' and a late edit');
+    await userEvent.click(screen.getByRole('button', { name: 'Load latest' }));
+    await waitFor(() => expect(editorText(container)).toBe('# From the other browser'));
+    await new Promise((resolve) => setTimeout(resolve, 1200)); // longer than the autosave delay
+    expect((await getDocument(doc.id))!.content).toBe('# From the other browser');
+  });
+
+  it('Save mine as a copy keeps a late edit and leaves the original on the latest version', async () => {
+    fake.signIn();
+    const { project, doc } = await projectWithDocument();
+    const { container } = renderAt(`/p/${project.id}/d/${doc.id}`);
+    await saveVersionNow();
+    await waitFor(() => expect(fake.versions.size).toBe(1));
+    fake.addVersion((await getDocument(doc.id))!.cloudDocumentId!, '# From the other browser');
+    type(container, '\n\nMine');
+    await saveVersionNow();
+    await screen.findByRole('dialog', { name: 'A newer version exists' });
+    type(container, ' and a late edit');
+    await userEvent.click(screen.getByRole('button', { name: 'Save mine as a copy' }));
+    await waitFor(() => expect(editorText(container)).toBe('# Hello\n\nWorld\n\nMine and a late edit'));
+    await new Promise((resolve) => setTimeout(resolve, 1200)); // longer than the autosave delay
+    expect((await getDocument(doc.id))!.content).toBe('# From the other browser');
+  });
+
   it('test_save_with_expired_session_signs_out', async () => {
     // Review Focus 1: the session ends while the app is open.
     fake.signIn();
@@ -246,6 +280,37 @@ describe('Workspace versions', () => {
       await userEvent.click(await screen.findByRole('button', { name: 'Close' }));
       await waitFor(() => expect(container.querySelector('.cm-editor')).not.toBeNull());
       expect(editorText(container)).toBe('# Hello\n\nWorld\n\nSecond');
+    });
+
+    it('Close keeps an edit typed while the version was opening', async () => {
+      const { container, doc } = await twoVersions();
+      fireEvent.click(screen.getByRole('button', { name: /^v1/ }));
+      type(container, '\n\nDuring the read');
+      await userEvent.click(await screen.findByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(container.querySelector('.cm-editor')).not.toBeNull());
+      expect(editorText(container)).toBe('# Hello\n\nWorld\n\nSecond\n\nDuring the read');
+      expect((await getDocument(doc.id))!.content).toBe('# Hello\n\nWorld\n\nSecond\n\nDuring the read');
+    });
+
+    it('Restore aims at the version that is latest now, not when the viewer opened', async () => {
+      const { container, doc } = await twoVersions();
+      await userEvent.click(screen.getByRole('button', { name: /^v1/ }));
+      await screen.findByText('Version 1 · read-only');
+      const newer = fake.addVersion((await getDocument(doc.id))!.cloudDocumentId!, '# From the other browser');
+      await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+      await waitFor(() => expect(editorText(container)).toBe('# Hello\n\nWorld'));
+      expect((await getDocument(doc.id))!.headVersionId).toBe(newer.id);
+    });
+
+    it('a document saved under another account keeps its link when History opens', async () => {
+      const { doc } = await twoVersions();
+      const { cloudDocumentId } = (await getDocument(doc.id))!;
+      fake.versions.clear();
+      fake.documents.clear();
+      await userEvent.click(screen.getByRole('radio', { name: 'Outline' }));
+      await userEvent.click(screen.getByRole('radio', { name: 'History' }));
+      expect(await screen.findByText('No versions yet')).toBeInTheDocument();
+      expect((await getDocument(doc.id))!.cloudDocumentId).toBe(cloudDocumentId);
     });
 
     it('switching documents closes the viewer', async () => {

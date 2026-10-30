@@ -97,7 +97,8 @@ export function useDocumentDraft(docId: string | undefined, { saveDelay = 1000, 
       async flushAsync() {
         flush();
         await inflight;
-        if (unsaved !== null) throw new Error('Your last changes couldn’t be saved in this browser.');
+        // Still pending means an edit typed during the wait, which autosave has in hand: not a failure.
+        if (unsaved !== null && !debounced.pending()) throw new Error('Your last changes couldn’t be saved in this browser.');
       },
       hasUnsaved: () => unsaved !== null,
     };

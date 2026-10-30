@@ -2,16 +2,15 @@ import { useCallback, useEffect, useState } from 'react';
 import { ApiError, type LatestOut } from '../api';
 import { useAuth } from '../auth';
 import { listPhrase } from '../lib/text';
-import { setHeadVersion, StoreError } from '../store';
-import { deleteVersion, loadVersion, saveAsCopy, saveVersion } from '../sync';
+import { NotFoundError, setHeadVersion, StoreError } from '../store';
+import { deleteVersion, listVersions, loadVersion, saveAsCopy, saveVersion } from '../sync';
 import type { DocumentDraft } from './useDocumentDraft';
 
 export const SESSION_ENDED = 'Your session ended. Sign in again to save versions.';
 
 export interface Conflict {
   latest: LatestOut;
-  /** What the user tried to save, kept for "Save mine as a copy". */
-  text: string;
+  /** The message the user gave, kept for "Save mine as a copy". */
   message: string | null;
 }
 
@@ -25,7 +24,7 @@ export interface VersionActions {
   loadLatest(): Promise<void>;
   saveCopy(): Promise<void>;
   dismissConflict(): void;
-  restore(versionId: string, number: number, latestId: string): Promise<boolean>;
+  restore(versionId: string, number: number): Promise<boolean>;
   remove(versionId: string): Promise<boolean>;
 }
 
@@ -81,7 +80,7 @@ export function useVersionActions({ docId, draft, currentText, notify, openDocum
           result = await saveVersion(docId, text, message);
         }
         if (result.kind === 'conflict') {
-          if (result.latest) setConflict({ latest: result.latest, text, message });
+          if (result.latest) setConflict({ latest: result.latest, message });
           return;
         }
         setLastNumber(result.version.number);
@@ -102,6 +101,7 @@ export function useVersionActions({ docId, draft, currentText, notify, openDocum
   const loadLatest = useCallback(async () => {
     if (!docId || !conflict) return;
     try {
+      await draft.flush(); // a pending autosave landing after the load would overwrite the loaded text
       const { number, keptImages } = await loadVersion(docId, conflict.latest.id, { asLatest: true });
       setConflict(null);
       draft.reload();
@@ -116,7 +116,8 @@ export function useVersionActions({ docId, draft, currentText, notify, openDocum
   const saveCopy = useCallback(async () => {
     if (!docId || !conflict) return;
     try {
-      const { copyId, copyTitle, originalTitle } = await saveAsCopy(docId, conflict.text, conflict.message, conflict.latest);
+      await draft.flush(); // as in loadLatest: the original must end up on the latest version
+      const { copyId, copyTitle, originalTitle } = await saveAsCopy(docId, currentText(), conflict.message, conflict.latest);
       setConflict(null);
       changed();
       openDocument(copyId);
@@ -124,13 +125,16 @@ export function useVersionActions({ docId, draft, currentText, notify, openDocum
     } catch (error) {
       report(error, 'save your copy');
     }
-  }, [docId, conflict, changed, openDocument, notify, report]);
+  }, [docId, conflict, draft, currentText, changed, openDocument, notify, report]);
 
   const restore = useCallback(
-    async (versionId: string, number: number, latestId: string) => {
+    async (versionId: string, number: number) => {
       if (!docId) return false;
       try {
         await draft.flush();
+        // Read it now: a version saved elsewhere while the viewer was open is the real latest.
+        const latestId = (await listVersions(docId))?.[0]?.id;
+        if (!latestId) throw new NotFoundError('This version is no longer in your account.');
         const mode = versionId === latestId ? ({ asLatest: true } as const) : ({ asLatest: false, latestId } as const);
         const { keptImages } = await loadVersion(docId, versionId, mode);
         draft.reload();

@@ -1,7 +1,7 @@
 import { ApiError, getApi, getBlob, request, type Api, type VersionDetail, type VersionSummary } from '../api';
-import { getDocument, linkDocument, NotFoundError, setHeadVersion } from '../store';
+import { getDocument, NotFoundError, setHeadVersion } from '../store';
 
-/** The document's versions, newest first; null when it was never saved (or its link went stale). */
+/** The document's versions, newest first; null when it was never saved or this account can't see it. */
 export async function listVersions(docId: string, api: Api = getApi()): Promise<VersionSummary[] | null> {
   const doc = await getDocument(docId);
   if (!doc?.cloudDocumentId) return null;
@@ -10,11 +10,9 @@ export async function listVersions(docId: string, api: Api = getApi()): Promise<
       api.GET('/api/documents/{document_id}/versions', { params: { path: { document_id: doc.cloudDocumentId! } } }),
     );
   } catch (error) {
-    if (error instanceof ApiError && error.status === 404) {
-      // Deleted elsewhere, or saved under another account: the next save starts a new history.
-      await linkDocument(docId, null);
-      return null;
-    }
+    // Deleted elsewhere, or saved under another account. Looking must not unlink it: signing back
+    // in to the right account finds the history again, and a real save handles a stale link (P-078).
+    if (error instanceof ApiError && error.status === 404) return null;
     throw error;
   }
 }

@@ -72,13 +72,14 @@ describe('history', () => {
     expect((await listVersions(doc.id, api()))!.map((v) => v.number)).toEqual([2, 1]);
   });
 
-  it('listVersions clears a stale link on 404 and returns null', async () => {
+  it('listVersions returns null on 404 and keeps the link for the next save to judge', async () => {
     const { doc } = await twoVersions();
+    const before = (await getDocument(doc.id))!;
     fake.documents.clear();
     expect(await listVersions(doc.id, api())).toBeNull();
     const stored = (await getDocument(doc.id))!;
-    expect(stored.cloudDocumentId).toBeUndefined();
-    expect(stored.headVersionId).toBeUndefined();
+    expect(stored.cloudDocumentId).toBe(before.cloudDocumentId);
+    expect(stored.headVersionId).toBe(before.headVersionId);
   });
 
   it('readVersion returns the version and its text', async () => {
